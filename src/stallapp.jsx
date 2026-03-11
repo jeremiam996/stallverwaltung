@@ -212,15 +212,11 @@ export default function StallApp() {
     const alreadyChecked = daySlots.includes(memberId);
 
     if(!alreadyChecked){
-      // Check: is this day already taken by someone else in the same group?
-      // Find group root
-      const member = members.find(m=>m.id===memberId);
-      const rootId = member?.type==="reitbeteiligung" ? member.einstellerId : member?.id;
-      const groupIds = [rootId, ...members.filter(m=>m.einstellerId===rootId).map(m=>m.id)].filter(Boolean);
-      const alreadyBookedByGroup = daySlots.some(id => groupIds.includes(id) && id!==memberId);
+      // Check: is this day already taken by ANYONE in the stall?
+      const alreadyBooked = daySlots.length > 0;
 
-      if(alreadyBookedByGroup){
-        showToast("⚠️ Dieser Tag ist bereits durch jemanden aus deiner Gruppe belegt!", "#c0392b");
+      if(alreadyBooked){
+        showToast("⚠️ Dieser Tag ist bereits vergeben – wer zuerst kommt, mahlt zuerst!", "#c0392b");
         return;
       }
 
@@ -568,12 +564,19 @@ export default function StallApp() {
           </div>
 
           {rows.map(({member:m,isChild})=>{
+            // Monthly count & quota shown next to name
+            const mYear  = weekDates[0].getFullYear();
+            const mMonth = weekDates[0].getMonth();
+            const monthQ = getMonthlyQuota(m, members, vacations, mYear, mMonth);
+            const monthC = countMistMonth(mistData, m.id, mYear, mMonth);
+            const ok     = monthC >= monthQ;
+
+            // Vacation this whole week?
             const weekMonKey = dk(weekDates[0]);
-            const quota  = getMemberWeekQuota(m, weekMonKey, members, vacations);
-            const count  = weekDates.reduce((a,d)=>a+((mistData[dk(d)]||[]).includes(m.id)?1:0),0);
-            const ok     = count>=quota;
-            const isMe   = currentUser.id===m.id;
-            const allowed= isAdmin||isMe;
+            const onVacWeek  = getMemberWeekQuota(m, weekMonKey, members, vacations) === 0;
+
+            const isMe    = currentUser.id===m.id;
+            const allowed = isAdmin||isMe;
 
             return (
               <div key={m.id} style={{marginBottom:4}}>
@@ -583,26 +586,23 @@ export default function StallApp() {
                     <div style={{fontSize:11,fontWeight:isMe?700:500,color:isMe?"#c8913a":"#2c2416",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                       {m.name.split(" ")[0]}
                     </div>
-                    {quota===0
+                    {onVacWeek
                       ? <div style={{fontSize:9,color:"#16a085",fontWeight:600}}>🌴 Urlaub</div>
-                      : <div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{count}/{quota}×</div>}
+                      : <div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{monthC}/{monthQ}Mo</div>}
                   </div>
                   {weekDates.map(d=>{
-                    const k=dk(d);
-                    const checked=(mistData[k]||[]).includes(m.id);
-                    const isPast=d<new Date(dk(today));
-                    const onVac=isOnVacationDay(m.id,k,vacations);
-                    // Check if slot is taken by another group member
-                    const rootId=m.type==="reitbeteiligung"?m.einstellerId:m.id;
-                    const groupIds=[rootId,...members.filter(x=>x.einstellerId===rootId).map(x=>x.id)].filter(Boolean);
-                    const takenByOther=(mistData[k]||[]).some(id=>groupIds.includes(id)&&id!==m.id);
+                    const k           = dk(d);
+                    const checked     = (mistData[k]||[]).includes(m.id);
+                    const isPast      = d < new Date(dk(today));
+                    const onVac       = isOnVacationDay(m.id, k, vacations);
+                    const takenByOther= (mistData[k]||[]).some(id => id!==m.id);
 
                     return (
                       <div key={k} onClick={()=>allowed&&!onVac&&toggleMist(k,m.id)}
                         style={{height:30,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",
                           cursor:(allowed&&!onVac)?"pointer":"default",
-                          background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther&&!checked?"#fdecea":isPast?"#f5f0e8":"#faf6f0",
-                          border:checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther&&!checked?"2px solid #f5c0c0":isMe&&!isPast?"2px solid #c8913a55":"2px solid #e2d5c0",
+                          background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":isPast?"#f5f0e8":"#faf6f0",
+                          border:checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther?"2px solid #f5c0c0":isMe&&!isPast?"2px solid #c8913a55":"2px solid #e2d5c0",
                           opacity:allowed?1:0.7,transition:"all .15s"}}>
                         {onVac&&<span style={{fontSize:10}}>🌴</span>}
                         {!onVac&&checked&&<span style={{color:"#fff",fontSize:11}}>✓</span>}
@@ -618,8 +618,9 @@ export default function StallApp() {
           <div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa"}}>
             <span>✓ = Eingetragen</span>
             <span>🌴 = Urlaub</span>
-            <span style={{color:"#c0392b"}}>✗ = Belegt</span>
+            <span style={{color:"#c0392b"}}>✗ = Tag bereits vergeben</span>
             <span>🔒 = Nur eigener</span>
+            <span style={{color:"#c8913a",fontWeight:600}}>Mo = Monatssoll</span>
           </div>
         </div>
 
@@ -684,85 +685,185 @@ export default function StallApp() {
   // ══════════════════════════════════════════════════════════════════════════
   // MEMBERS
   // ══════════════════════════════════════════════════════════════════════════
-  const MembersScreen = () => (
-    <div>
-      {!isAdmin&&(
-        <div style={{...S.card,background:"#f5f0e8",border:"1.5px solid #e2d5c0"}}>
-          <div style={{...S.row,gap:8}}><Ic n="lock" s={16}/><div style={{fontSize:12,color:"#8b6040"}}>Mitgliederverwaltung ist nur für Admins. Du siehst alle in der Übersicht.</div></div>
-        </div>
-      )}
-      {einstellerList.map(e=>{
-        const beteiligungen=members.filter(m=>m.einstellerId===e.id);
-        return (
-          <div key={e.id} style={S.card}>
-            <div style={{...S.row,justifyContent:"space-between",marginBottom:beteiligungen.length?10:0}}>
+  const MembersScreen = () => {
+    const [editId,   setEditId]   = useState(null);
+    const [editData, setEditData] = useState({});
+
+    const startEdit = (m) => {
+      setEditId(m.id);
+      setEditData({ name:m.name, horse:m.horse, phone:m.phone||"", pin:m.pin, type:m.type, einstellerId:m.einstellerId||"" });
+    };
+    const cancelEdit = () => setEditId(null);
+    const saveEdit = (id) => {
+      if(!editData.name||!editData.pin) return;
+      setMembers(p=>p.map(m=>m.id===id ? {
+        ...m,
+        name:  editData.name,
+        horse: editData.horse,
+        phone: editData.phone,
+        pin:   editData.pin,
+        type:  editData.type,
+        paid:  editData.type==="reitbeteiligung" ? null : (m.paid ?? false),
+        einstellerId: editData.einstellerId ? parseInt(editData.einstellerId) : null,
+      } : m));
+      setEditId(null);
+      showToast("✅ Daten gespeichert!");
+    };
+
+    const inStyle = { ...S.input, marginBottom:6, padding:"8px 10px", fontSize:12 };
+    const lStyle  = { ...S.label, marginBottom:2 };
+
+    const MemberRow = ({m, isChild}) => {
+      const isEditing = isAdmin && editId===m.id;
+      const avatarBg  = m.type==="admin"
+        ? "linear-gradient(135deg,#c8913a,#f5c842)"
+        : isChild ? "linear-gradient(135deg,#7f8c8d,#aaa)" : undefined;
+      const avatarSz  = isChild ? {width:30,height:30,fontSize:12} : {};
+
+      return (
+        <div style={isChild ? {paddingLeft:14,paddingTop:10,borderTop:"1px dashed #f0e8d8"} : {}}>
+          {!isEditing ? (
+            /* ── VIEW MODE ── */
+            <div style={{...S.row,justifyContent:"space-between"}}>
               <div style={{...S.row,gap:10}}>
-                <div style={S.ava(e.type==="admin"?"linear-gradient(135deg,#c8913a,#f5c842)":undefined)}>{e.name.charAt(0)}</div>
+                <div style={{...S.ava(avatarBg),...avatarSz}}>{m.name.charAt(0)}</div>
                 <div>
-                  <div style={{fontWeight:600,fontSize:13}}>{e.name} {e.type==="admin"&&<span style={{fontSize:10,color:"#c8913a"}}>👑</span>}</div>
-                  <div style={{fontSize:11,color:"#8b6040"}}>🐴 {e.horse} · {e.type==="admin"?"Admin":"Einsteller"}</div>
-                  {isAdmin&&<><div style={{fontSize:10,color:"#aaa"}}>{e.phone}</div><div style={{fontSize:10,color:"#b89060"}}>PIN: {e.pin}</div></>}
-                  {getVacationLabel(e.id)&&<div style={{fontSize:10,color:"#16a085",marginTop:2}}>{getVacationLabel(e.id)}</div>}
-                </div>
-              </div>
-              {isAdmin&&e.type!=="admin"&&<button onClick={()=>deleteMember(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:4}}><Ic n="x" s={14}/></button>}
-            </div>
-            {beteiligungen.map(rb=>(
-              <div key={rb.id} style={{...S.row,justifyContent:"space-between",paddingLeft:14,paddingTop:10,borderTop:"1px dashed #f0e8d8"}}>
-                <div style={{...S.row,gap:8}}>
-                  <div style={{...S.ava("linear-gradient(135deg,#7f8c8d,#aaa)"),width:30,height:30,fontSize:12}}>{rb.name.charAt(0)}</div>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:500}}>{rb.name}</div>
-                    <div style={{fontSize:10,color:"#8b6040"}}>🤝 Reitbeteiligung</div>
-                    {isAdmin&&<><div style={{fontSize:10,color:"#aaa"}}>{rb.phone}</div><div style={{fontSize:10,color:"#b89060"}}>PIN: {rb.pin}</div></>}
-                    {getVacationLabel(rb.id)&&<div style={{fontSize:10,color:"#16a085"}}>{getVacationLabel(rb.id)}</div>}
+                  <div style={{fontWeight:600,fontSize:isChild?12:13}}>
+                    {m.name} {m.type==="admin"&&<span style={{fontSize:10,color:"#c8913a"}}>👑</span>}
                   </div>
+                  <div style={{fontSize:11,color:"#8b6040"}}>
+                    {m.type==="reitbeteiligung"?"🤝 Reitbeteiligung":m.type==="admin"?"👑 Admin":"🐴 Einsteller"}
+                    {m.horse?` · ${m.horse}`:""}
+                  </div>
+                  {isAdmin&&<>
+                    {m.phone&&<div style={{fontSize:10,color:"#aaa"}}>📞 {m.phone}</div>}
+                    <div style={{fontSize:10,color:"#b89060"}}>PIN: {m.pin}</div>
+                  </>}
+                  {getVacationLabel(m.id)&&<div style={{fontSize:10,color:"#16a085",marginTop:2}}>{getVacationLabel(m.id)}</div>}
                 </div>
-                {isAdmin&&<button onClick={()=>deleteMember(rb.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:4}}><Ic n="x" s={14}/></button>}
               </div>
-            ))}
-          </div>
-        );
-      })}
-      {isAdmin&&(
-        <div style={{margin:"14px 16px 0"}}>
-          <button style={{...S.btn("primary"),width:"100%",padding:14}} onClick={()=>setShowAddMember(true)}>+ Mitglied hinzufügen</button>
-        </div>
-      )}
-      {showAddMember&&(
-        <div style={S.modal}><div style={S.mBox}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Neues Mitglied</div>
-          <label style={S.label}>Name</label>
-          <input style={S.input} placeholder="Vor- und Nachname" value={newMember.name} onChange={e=>setNewMember(p=>({...p,name:e.target.value}))}/>
-          <label style={S.label}>Pferd</label>
-          <input style={S.input} placeholder="Name des Pferdes" value={newMember.horse} onChange={e=>setNewMember(p=>({...p,horse:e.target.value}))}/>
-          <label style={S.label}>Typ</label>
-          <select style={S.input} value={newMember.type} onChange={e=>setNewMember(p=>({...p,type:e.target.value,einstellerId:""}))}>
-            <option value="einsteller">Einsteller</option>
-            <option value="reitbeteiligung">Reitbeteiligung</option>
-            <option value="admin">Admin</option>
-          </select>
-          {newMember.type==="reitbeteiligung"&&(
-            <>
-              <label style={S.label}>Gehört zu Einsteller</label>
-              <select style={S.input} value={newMember.einstellerId} onChange={e=>setNewMember(p=>({...p,einstellerId:e.target.value}))}>
-                <option value="">— bitte wählen —</option>
-                {einstellerList.map(m=><option key={m.id} value={m.id}>{m.name} ({m.horse})</option>)}
-              </select>
-            </>
+              {isAdmin&&(
+                <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
+                  <button onClick={()=>startEdit(m)}
+                    style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,color:"#8b6040"}}>
+                    ✏️ Bearbeiten
+                  </button>
+                  {m.type!=="admin"&&(
+                    <button onClick={()=>deleteMember(m.id)}
+                      style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:"2px 4px"}}>
+                      <Ic n="x" s={13}/>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── EDIT MODE ── */
+            <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#c8913a",marginBottom:10}}>✏️ Bearbeiten: {m.name}</div>
+
+              <label style={lStyle}>Name</label>
+              <input style={inStyle} value={editData.name} onChange={e=>setEditData(p=>({...p,name:e.target.value}))}/>
+
+              <label style={lStyle}>Pferd</label>
+              <input style={inStyle} placeholder="Pferdename" value={editData.horse} onChange={e=>setEditData(p=>({...p,horse:e.target.value}))}/>
+
+              <label style={lStyle}>Telefon</label>
+              <input style={inStyle} placeholder="Optional" value={editData.phone} onChange={e=>setEditData(p=>({...p,phone:e.target.value}))}/>
+
+              <label style={lStyle}>PIN zurücksetzen</label>
+              <input style={inStyle} placeholder="4-stellig" maxLength={4} value={editData.pin}
+                onChange={e=>setEditData(p=>({...p,pin:e.target.value.replace(/\D/,"")}))}/>
+
+              {m.type!=="admin"&&<>
+                <label style={lStyle}>Typ</label>
+                <select style={inStyle} value={editData.type} onChange={e=>setEditData(p=>({...p,type:e.target.value,einstellerId:""}))}>
+                  <option value="einsteller">🐴 Einsteller</option>
+                  <option value="reitbeteiligung">🤝 Reitbeteiligung</option>
+                </select>
+              </>}
+
+              {editData.type==="reitbeteiligung"&&<>
+                <label style={lStyle}>Gehört zu Einsteller</label>
+                <select style={inStyle} value={editData.einstellerId} onChange={e=>setEditData(p=>({...p,einstellerId:e.target.value}))}>
+                  <option value="">— bitte wählen —</option>
+                  {einstellerList.filter(x=>x.id!==m.id).map(x=>(
+                    <option key={x.id} value={x.id}>{x.name} ({x.horse})</option>
+                  ))}
+                </select>
+              </>}
+
+              <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+                <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={cancelEdit}>Abbrechen</button>
+                <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={()=>saveEdit(m.id)}>💾 Speichern</button>
+              </div>
+            </div>
           )}
-          <label style={S.label}>PIN (4-stellig)</label>
-          <input style={S.input} placeholder="z.B. 1234" maxLength={4} value={newMember.pin} onChange={e=>setNewMember(p=>({...p,pin:e.target.value.replace(/\D/,"")}))}/>
-          <label style={S.label}>Telefon</label>
-          <input style={S.input} placeholder="Optional" value={newMember.phone} onChange={e=>setNewMember(p=>({...p,phone:e.target.value}))}/>
-          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
-            <button style={S.btn("light")} onClick={()=>setShowAddMember(false)}>Abbrechen</button>
-            <button style={S.btn("primary")} onClick={addMember}>Hinzufügen</button>
+        </div>
+      );
+    };
+
+    return (
+      <div>
+        {!isAdmin&&(
+          <div style={{...S.card,background:"#f5f0e8",border:"1.5px solid #e2d5c0"}}>
+            <div style={{...S.row,gap:8}}><Ic n="lock" s={16}/><div style={{fontSize:12,color:"#8b6040"}}>Mitgliederverwaltung ist nur für Admins. Du siehst alle in der Übersicht.</div></div>
           </div>
-        </div></div>
-      )}
-    </div>
-  );
+        )}
+
+        {einstellerList.map(e=>{
+          const beteiligungen=members.filter(m=>m.einstellerId===e.id);
+          return (
+            <div key={e.id} style={S.card}>
+              <MemberRow m={e} isChild={false}/>
+              {beteiligungen.map(rb=>(
+                <MemberRow key={rb.id} m={rb} isChild={true}/>
+              ))}
+            </div>
+          );
+        })}
+
+        {isAdmin&&(
+          <div style={{margin:"14px 16px 0"}}>
+            <button style={{...S.btn("primary"),width:"100%",padding:14}} onClick={()=>setShowAddMember(true)}>+ Mitglied hinzufügen</button>
+          </div>
+        )}
+
+        {showAddMember&&(
+          <div style={S.modal}><div style={S.mBox}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Neues Mitglied</div>
+            <label style={S.label}>Name</label>
+            <input style={S.input} placeholder="Vor- und Nachname" value={newMember.name} onChange={e=>setNewMember(p=>({...p,name:e.target.value}))}/>
+            <label style={S.label}>Pferd</label>
+            <input style={S.input} placeholder="Name des Pferdes" value={newMember.horse} onChange={e=>setNewMember(p=>({...p,horse:e.target.value}))}/>
+            <label style={S.label}>Typ</label>
+            <select style={S.input} value={newMember.type} onChange={e=>setNewMember(p=>({...p,type:e.target.value,einstellerId:""}))}>
+              <option value="einsteller">Einsteller</option>
+              <option value="reitbeteiligung">Reitbeteiligung</option>
+              <option value="admin">Admin</option>
+            </select>
+            {newMember.type==="reitbeteiligung"&&(
+              <>
+                <label style={S.label}>Gehört zu Einsteller</label>
+                <select style={S.input} value={newMember.einstellerId} onChange={e=>setNewMember(p=>({...p,einstellerId:e.target.value}))}>
+                  <option value="">— bitte wählen —</option>
+                  {einstellerList.map(m=><option key={m.id} value={m.id}>{m.name} ({m.horse})</option>)}
+                </select>
+              </>
+            )}
+            <label style={S.label}>PIN (4-stellig)</label>
+            <input style={S.input} placeholder="z.B. 1234" maxLength={4} value={newMember.pin} onChange={e=>setNewMember(p=>({...p,pin:e.target.value.replace(/\D/,"")}))}/>
+            <label style={S.label}>Telefon</label>
+            <input style={S.input} placeholder="Optional" value={newMember.phone} onChange={e=>setNewMember(p=>({...p,phone:e.target.value}))}/>
+            <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+              <button style={S.btn("light")} onClick={()=>setShowAddMember(false)}>Abbrechen</button>
+              <button style={S.btn("primary")} onClick={addMember}>Hinzufügen</button>
+            </div>
+          </div></div>
+        )}
+      </div>
+    );
+  };
 
   // ══════════════════════════════════════════════════════════════════════════
   // FINANZEN
