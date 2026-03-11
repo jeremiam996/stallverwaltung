@@ -430,17 +430,44 @@ export default function StallApp() {
         )}
         {isE&&(
           <div style={S.card}>
-            <div style={S.cTitle}>Mein Mistdienst</div>
+            <div style={S.cTitle}>Mein Überblick</div>
+            {/* Mistdienst */}
             <div style={{...S.row,justifyContent:"space-between",marginBottom:8}}>
               <div>
-                <div style={{fontSize:13}}>Dieser Monat: <b style={{color:mC>=mQ?"#27ae60":"#c0392b"}}>{mC}/{mQ}×</b></div>
+                <div style={{fontSize:13}}>🧹 Mistdienst: <b style={{color:mC>=mQ?"#27ae60":"#c0392b"}}>{mC}/{mQ}×</b></div>
                 <div style={{fontSize:11,color:"#aaa",marginTop:2}}>Aufgeteilt mit {members.filter(m=>m.einstellerId===currentUser.id).length} Reitbet.</div>
               </div>
               {mC>=mQ?<span style={{color:"#27ae60",fontWeight:700,fontSize:12}}>✓ Erledigt!</span>:<span style={{color:"#c0392b",fontWeight:700,fontSize:12}}>Noch offen</span>}
             </div>
-            <button style={{...S.btn("teal"),padding:"8px 14px",fontSize:11,marginTop:4}} onClick={()=>{setVacTargetId(currentUser.id);setNewVac({from:"",to:"",note:""});setShowAddVacation(true);}}>
+            {/* Zahlungsstatus */}
+            {currentUser.type!=="reitbeteiligung"&&(
+              <div style={{...S.row,justifyContent:"space-between",marginTop:4,paddingTop:10,borderTop:"1px solid #f0e8d8"}}>
+                <div style={{fontSize:13}}>💰 Stallgebühr {today.toLocaleDateString("de-DE",{month:"long"})}</div>
+                {currentUser.paid
+                  ? <span style={{background:"#d5f5e3",color:"#27ae60",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ Bezahlt</span>
+                  : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Ausstehend</span>}
+              </div>
+            )}
+            <button style={{...S.btn("teal"),padding:"8px 14px",fontSize:11,marginTop:12}} onClick={()=>{setVacTargetId(currentUser.id);setNewVac({from:"",to:"",note:""});setShowAddVacation(true);}}>
               🌴 Urlaub eintragen
             </button>
+          </div>
+        )}
+        {/* Admin: Zahlungsübersicht aller Einsteller */}
+        {isAdmin&&(
+          <div style={S.card}>
+            <div style={S.cTitle}>💰 Zahlungsübersicht</div>
+            {members.filter(m=>m.type!=="reitbeteiligung").map(m=>(
+              <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:500}}>{m.name}</div>
+                  <div style={{fontSize:10,color:"#8b6040"}}>{m.type==="admin"?"👑 Admin":"🐴 Einsteller"} · {m.horse}</div>
+                </div>
+                {m.paid
+                  ? <span style={{background:"#d5f5e3",color:"#27ae60",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ Bezahlt</span>
+                  : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Offen</span>}
+              </div>
+            ))}
           </div>
         )}
         <div style={S.card}>
