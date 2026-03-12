@@ -39,6 +39,7 @@ const getWeekDates = (offset=0) => {
   return Array.from({length:7},(_,i)=>{ const d=new Date(mon); d.setDate(mon.getDate()+i); return d; });
 };
 const dk    = d => d.toISOString().slice(0,10);
+const dkl   = d => { const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0"); return `${y}-${m}-${day}`; };
 const fmt   = d => d.toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"});
 const fmtD  = d => d.toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"});
 const fmtSh = d => d.toLocaleDateString("de-DE",{day:"2-digit",month:"short"});
@@ -237,9 +238,35 @@ export default function StallApp() {
   const handleLogout = () => { setCurrentUser(null); setLoginStep("select"); setSelName(""); setPinInput(""); setTab("home"); };
 
   // ── Mist toggle ───────────────────────────────────────────────────────────
+  // ── Mist locking rules (for non-admins) ──────────────────────────────────
+  // 1. Only current month and next month allowed (max 1 month ahead)
+  // 2. Current month is locked after the 7th
+  const isMistLocked = (dayKey) => {
+    if(isAdmin) return false;
+    const day   = new Date(dayKey + "T00:00:00");
+    const dayYM = day.getFullYear() * 12 + day.getMonth();
+    const nowYM = today.getFullYear() * 12 + today.getMonth();
+    // More than 1 month ahead → locked
+    if(dayYM > nowYM + 1) return true;
+    // Past months → locked
+    if(dayYM < nowYM) return true;
+    // Current month + today is past the 7th → locked
+    if(dayYM === nowYM && today.getDate() > 7) return true;
+    return false;
+  };
+
   const toggleMist = async (dayKey, memberId) => {
     if(!currentUser) return;
     if(!isAdmin && currentUser.id!==memberId) return;
+    // Check locking rules for non-admins
+    if(!isAdmin && isMistLocked(dayKey)){
+      if(today.getDate() > 7){
+        showToast("🔒 Eintragungen für diesen Monat sind nach dem 7. gesperrt","#c0392b");
+      } else {
+        showToast("🔒 Nur bis einen Monat im Voraus möglich","#c0392b");
+      }
+      return;
+    }
     const daySlots = mistData[dayKey]||[];
     const alreadyChecked = daySlots.includes(memberId);
     if(!alreadyChecked){
@@ -481,7 +508,7 @@ export default function StallApp() {
           const leadingBlanks = (new Date(calYear,calMonth,1).getDay()||7)-1;
 
           const getDayInfo = (day) => {
-            const k = dk(day);
+            const k = dkl(day);
             const myMist  = (mistData[k]||[]).includes(currentUser.id);
             const myVac   = isOnVacationDay(currentUser.id, k, vacations);
             const dayEvts = events.filter(e=>e.date===k);
@@ -513,8 +540,8 @@ export default function StallApp() {
                 {calDays.map(day=>{
                   const info     = getDayInfo(day);
                   const dotColor = getDotColor(info);
-                  const isToday  = info.k===dk(today);
-                  const isSelected = selDay && dk(day)===dk(selDay);
+                  const isToday  = info.k===dkl(today);
+                  const isSelected = selDay && dkl(day)===dkl(selDay);
                   const hasContent = info.myMist||info.myVac||info.dayEvts.length>0;
                   return (
                     <div key={info.k}
@@ -744,26 +771,29 @@ export default function StallApp() {
               {/* leading empty cells */}
               {Array.from({length:(new Date(viewYear,viewMonth,1).getDay()||7)-1}).map((_,i)=><div key={"e"+i}/>)}
               {daysInMonth().map(d=>{
-                const k         = dk(d);
-                const checked   = (mistData[k]||[]).includes(currentUser.id);
-                const isPast    = d < new Date(dk(today));
-                const isToday   = k===dk(today);
-                const onVac     = isOnVacationDay(currentUser.id,k,vacations);
+                const k            = dk(d);
+                const checked      = (mistData[k]||[]).includes(currentUser.id);
+                const isPast       = d < new Date(dk(today));
+                const isToday      = k===dk(today);
+                const onVac        = isOnVacationDay(currentUser.id,k,vacations);
                 const takenByOther = (mistData[k]||[]).some(id=>id!==currentUser.id);
-                const canClick  = !onVac && !takenByOther;
+                const locked       = isMistLocked(k);
+                const canClick     = !onVac && !takenByOther && !locked;
                 return (
                   <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
                     style={{
                       aspectRatio:"1",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                       cursor:canClick?"pointer":"default",
-                      background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":isPast?"#f5f0e8":"#fff",
+                      background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":locked&&!checked?"#f5f0e8":isPast?"#f5f0e8":"#fff",
                       border:isToday?"2px solid #c8913a":checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther?"2px solid #f5c0c0":"1px solid #e2d5c0",
+                      opacity:locked&&!checked?0.6:1,
                       transition:"all .15s"
                     }}>
                     <div style={{fontSize:11,fontWeight:isToday?700:400,color:checked?"#fff":takenByOther?"#c0392b":onVac?"#16a085":"#2c2416"}}>{d.getDate()}</div>
                     {onVac&&<div style={{fontSize:8}}>🌴</div>}
                     {!onVac&&checked&&<div style={{fontSize:8,color:"#fff"}}>✓</div>}
                     {!onVac&&!checked&&takenByOther&&<div style={{fontSize:8,color:"#c0392b"}}>✗</div>}
+                    {!onVac&&!checked&&!takenByOther&&locked&&<div style={{fontSize:8,color:"#aaa"}}>🔒</div>}
                   </div>
                 );
               })}
@@ -772,6 +802,7 @@ export default function StallApp() {
               <span>✓ = Eingetragen</span>
               <span style={{color:"#c0392b"}}>✗ = Tag vergeben</span>
               <span>🌴 = Urlaub</span>
+              <span>🔒 = Gesperrt</span>
             </div>
           </div>
         )}
