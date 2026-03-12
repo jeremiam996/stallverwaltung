@@ -372,7 +372,7 @@ export default function StallApp() {
   // ── Derived ───────────────────────────────────────────────────────────────
   const einstellerList = members.filter(m=>m.type==="einsteller"||m.type==="admin");
   const upcomingEvents = [...events].sort((a,b)=>a.date.localeCompare(b.date)).filter(e=>e.date>=dk(today)).slice(0,5);
-  const unpaid         = members.filter(m=>m.type!=="reitbeteiligung"&&!m.paid);
+  const unpaid         = members.filter(m=>m.type==="einsteller"&&!m.paid);
   const mistWarnings   = einstellerList.filter(m=>{ const mQ=getMonthlyQuota(m,members,vacations,curYear,curMonth); return countMistMonth(mistData,m.id,curYear,curMonth)<mQ; });
   const getVacationLabel = memberId => {
     const vacs=vacations[memberId]||[]; const now=dk(today);
