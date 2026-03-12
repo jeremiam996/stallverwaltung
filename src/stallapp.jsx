@@ -155,6 +155,8 @@ export default function StallApp() {
   const [newMember,   setNewMember]   = useState({name:"",horse:"",type:"einsteller",pin:"",phone:"",einstellerId:""});
   const [newVac,      setNewVac]      = useState({from:"",to:"",note:""});
   const [toast,       setToast]       = useState(null);
+  const [finAccounts, setFinAccounts] = useState({}); // { memberId: {baseFee} }
+  const [finMonths,   setFinMonths]   = useState({}); // { "memberId_YYYY-MM": {extras,payment,carryover,notes} }
 
   const weekDates = getWeekDates(weekOffset);
   const isAdmin   = currentUser?.type==="admin";
@@ -201,6 +203,20 @@ export default function StallApp() {
       });
       setVacations(vacObj);
 
+      // Load finance accounts
+      const { data: faRows } = await sb.from("finance_accounts").select("*");
+      const faObj = {};
+      (faRows||[]).forEach(r=>{ faObj[r.member_id] = { id:r.id, baseFee:r.base_fee||0 }; });
+      setFinAccounts(faObj);
+
+      // Load finance months
+      const { data: fmRows } = await sb.from("finance_months").select("*");
+      const fmObj = {};
+      (fmRows||[]).forEach(r=>{
+        fmObj[r.member_id+"_"+r.month] = { id:r.id, extras:r.extras||[], payment:r.payment, carryover:r.carryover||0, notes:r.notes||"" };
+      });
+      setFinMonths(fmObj);
+
     } catch(e) {
       showToast("⚠️ Verbindungsfehler – bitte neu laden","#c0392b");
     } finally {
@@ -217,6 +233,8 @@ export default function StallApp() {
       .on("postgres_changes",{event:"*",schema:"public",table:"members"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"events"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"vacations"},()=>loadAll())
+      .on("postgres_changes",{event:"*",schema:"public",table:"finance_accounts"},()=>loadAll())
+      .on("postgres_changes",{event:"*",schema:"public",table:"finance_months"},()=>loadAll())
       .subscribe();
     return ()=>sb.removeChannel(channel);
   },[loadAll]);
@@ -243,8 +261,9 @@ export default function StallApp() {
   // 2. Current month is locked after the 7th
   const isMistLocked = (dayKey) => {
     if(isAdmin) return false;
-    const day   = new Date(dayKey + "T00:00:00");
-    const dayYM = day.getFullYear() * 12 + day.getMonth();
+    // Parse purely from string to avoid timezone issues: "YYYY-MM-DD"
+    const [dy, dm] = dayKey.split("-").map(Number);
+    const dayYM = dy * 12 + (dm - 1);
     const nowYM = today.getFullYear() * 12 + today.getMonth();
     // More than 1 month ahead → locked
     if(dayYM > nowYM + 1) return true;
@@ -471,7 +490,7 @@ export default function StallApp() {
               <div style={{...S.row,justifyContent:"space-between",marginTop:4,paddingTop:10,borderTop:"1px solid #f0e8d8"}}>
                 <div style={{fontSize:13}}>💰 Stallgebühr {today.toLocaleDateString("de-DE",{month:"long"})}</div>
                 {currentUser.paid
-                  ? <span style={{background:"#d5f5e3",color:"#27ae60",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ Bezahlt</span>
+                  ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ Bezahlt</span>
                   : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Ausstehend</span>}
               </div>
             )}
@@ -491,7 +510,7 @@ export default function StallApp() {
                   <div style={{fontSize:10,color:"#8b6040"}}>{m.type==="admin"?"👑 Admin":"🐴 Einsteller"} · {m.horse}</div>
                 </div>
                 {m.paid
-                  ? <span style={{background:"#d5f5e3",color:"#27ae60",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ Bezahlt</span>
+                  ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ Bezahlt</span>
                   : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Offen</span>}
               </div>
             ))}
@@ -1076,49 +1095,323 @@ export default function StallApp() {
   };
 
   // ══════════════════════════════════════════════════════════════════════════
+  // FINANCE HELPERS
+  // ══════════════════════════════════════════════════════════════════════════
+  const fmKey = (memberId, year, month) => memberId+"_"+year+"-"+String(month+1).padStart(2,"0");
+  const getFinMonth = (memberId, year, month) => finMonths[fmKey(memberId,year,month)] || {extras:[],payment:null,carryover:0,notes:""};
+  const getBaseFee  = (memberId) => finAccounts[memberId]?.baseFee || 0;
+
+  const calcTotal = (memberId, year, month) => {
+    const fm   = getFinMonth(memberId, year, month);
+    const base = getBaseFee(memberId);
+    const extrasSum = (fm.extras||[]).reduce((a,e)=>a+Number(e.amount),0);
+    return base + extrasSum + Number(fm.carryover||0);
+  };
+
+  const saveFinMonth = async (memberId, year, month, data) => {
+    const key  = fmKey(memberId, year, month);
+    const mon  = year+"-"+String(month+1).padStart(2,"0");
+    const existing = finMonths[key];
+    const row  = { member_id:memberId, month:mon, extras:data.extras??existing?.extras??[], payment:data.payment??existing?.payment??null, carryover:data.carryover??existing?.carryover??0, notes:data.notes??existing?.notes??"" };
+    setFinMonths(prev=>({...prev,[key]:{...existing,...data}}));
+    if(existing?.id){
+      await sb.from("finance_months").update(row).eq("id",existing.id);
+    } else {
+      const newRow = {...row, id:Date.now()};
+      setFinMonths(prev=>({...prev,[key]:{...newRow,id:newRow.id}}));
+      await sb.from("finance_months").insert(newRow);
+    }
+  };
+
+  const saveBaseFee = async (memberId, fee) => {
+    const existing = finAccounts[memberId];
+    setFinAccounts(prev=>({...prev,[memberId]:{...prev[memberId],baseFee:fee}}));
+    if(existing?.id){
+      await sb.from("finance_accounts").update({base_fee:fee}).eq("id",existing.id);
+    } else {
+      const row = {id:Date.now(), member_id:memberId, base_fee:fee};
+      setFinAccounts(prev=>({...prev,[memberId]:{id:row.id,baseFee:fee}}));
+      await sb.from("finance_accounts").insert(row);
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
   // FINANZEN
   // ══════════════════════════════════════════════════════════════════════════
   const FinanzenScreen = () => {
-    if(!isAdmin) return <div style={S.card}><div style={{...S.row,gap:10,marginBottom:10}}><Ic n="shield"/><div style={S.cTitle}>Nur für Admins</div></div><div style={{fontSize:13,color:"#8b6040"}}>Der Finanzbereich wird ausschließlich vom Admin verwaltet.</div></div>;
-    const zm=members.filter(m=>m.type!=="reitbeteiligung");
-    const paid=zm.filter(m=>m.paid); const notPaid=zm.filter(m=>!m.paid);
-    return (
-      <div>
-        <div style={{...S.card,background:"linear-gradient(135deg,#27ae60,#1e8449)",color:"#fff"}}>
-          <div style={{fontSize:11,opacity:.8,marginBottom:4}}>Bezahlt diese Periode</div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:42,fontWeight:700}}>{paid.length}<span style={{fontSize:20,opacity:.6}}>/{zm.length}</span></div>
-          <div style={{fontSize:11,opacity:.8,marginTop:4}}>Einsteller haben gezahlt · Reitbeteiligungen separat</div>
-        </div>
-        <div style={S.card}>
-          <div style={S.cTitle}>Zahlungsstatus</div>
-          <div style={{fontSize:11,color:"#aaa",marginBottom:10}}>ℹ️ Reitbeteiligungen nicht aufgeführt</div>
-          {zm.map(m=>(
-            <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #f0e8d8"}}>
-              <div style={{...S.row,gap:10}}>
-                <div style={{width:34,height:34,borderRadius:"50%",background:m.paid?"#d5f5e3":"#fdecea",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <span style={{color:m.paid?"#27ae60":"#c0392b"}}>{m.paid?<Ic n="check" s={16}/>:<Ic n="x" s={16}/>}</span>
-                </div>
-                <div>
-                  <div style={{fontSize:13,fontWeight:500}}>{m.name}</div>
-                  <div style={{fontSize:11,color:"#8b6040"}}>{m.type==="admin"?"👑 Admin":"🐴 Einsteller"} · {m.horse}</div>
-                </div>
-              </div>
-              <button onClick={()=>togglePaid(m.id)} style={{...S.btn(m.paid?"light":"green"),padding:"6px 12px",fontSize:11}}>{m.paid?"↩ Reset":"✓ Bezahlt"}</button>
+    const einsteller = members.filter(m=>m.type==="einsteller"||m.type==="admin");
+    const [viewMonth, setViewMonth] = useState(today.getMonth());
+    const [viewYear,  setViewYear]  = useState(today.getFullYear());
+    const [editFee,   setEditFee]   = useState({}); // {memberId: feeString}
+    const [editPay,   setEditPay]   = useState({}); // {memberId: payString}
+    const [addExtra,  setAddExtra]  = useState(null); // memberId being edited
+    const [extraForm, setExtraForm] = useState({type:"Decken waschen",amount:"5",desc:""});
+
+    const monthLabel = new Date(viewYear,viewMonth,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"});
+    const isPrevMonth = viewYear < today.getFullYear() || (viewYear===today.getFullYear() && viewMonth < today.getMonth());
+
+    const goMonth = (dir) => {
+      let m=viewMonth+dir, y=viewYear;
+      if(m>11){m=0;y++;} if(m<0){m=11;y--;}
+      setViewMonth(m); setViewYear(y);
+    };
+
+    const handleSaveFee = async (memberId) => {
+      const fee = parseFloat(editFee[memberId]);
+      if(isNaN(fee)) return;
+      await saveBaseFee(memberId, fee);
+      setEditFee(p=>({...p,[memberId]:undefined}));
+      showToast("💾 Grundgebühr gespeichert!");
+    };
+
+    const handleSavePayment = async (memberId) => {
+      const pay  = parseFloat(editPay[memberId]);
+      if(isNaN(pay)) return;
+      const total = calcTotal(memberId, viewYear, viewMonth);
+      let diff  = pay - total;
+      // clamp carryover to ±5
+      if(diff > 5)  diff = 5;
+      if(diff < -5) diff = -5;
+      // Save this month's payment
+      await saveFinMonth(memberId, viewYear, viewMonth, {payment:pay});
+      // Apply carryover to NEXT month
+      let nm=viewMonth+1, ny=viewYear;
+      if(nm>11){nm=0;ny++;}
+      const nextFm = getFinMonth(memberId,ny,nm);
+      await saveFinMonth(memberId, ny, nm, {carryover: Number((nextFm.carryover||0) + diff)});
+      setEditPay(p=>({...p,[memberId]:undefined}));
+      showToast(diff!==0?`💾 Zahlung gespeichert · Übertrag: ${diff>0?"+":""}${diff.toFixed(2)}€`:"💾 Zahlung gespeichert!");
+    };
+
+    const handleAddExtra = async (memberId) => {
+      const amount = parseFloat(extraForm.amount);
+      if(isNaN(amount)||amount<=0) return;
+      const fm = getFinMonth(memberId, viewYear, viewMonth);
+      const newExtra = {id:Date.now(), type:extraForm.type, amount, desc:extraForm.desc};
+      await saveFinMonth(memberId, viewYear, viewMonth, {extras:[...(fm.extras||[]),newExtra]});
+      setAddExtra(null);
+      setExtraForm({type:"Decken waschen",amount:"5",desc:""});
+      showToast("✅ Zusatzdienst gebucht!");
+    };
+
+    const handleRemoveExtra = async (memberId, extraId) => {
+      const fm = getFinMonth(memberId, viewYear, viewMonth);
+      await saveFinMonth(memberId, viewYear, viewMonth, {extras:(fm.extras||[]).filter(e=>e.id!==extraId)});
+    };
+
+    // Einsteller view — only their own account
+    if(!isAdmin) {
+      const m     = currentUser;
+      const fm    = getFinMonth(m.id, viewYear, viewMonth);
+      const base  = getBaseFee(m.id);
+      const extras= fm.extras||[];
+      const carry = Number(fm.carryover||0);
+      const total = calcTotal(m.id, viewYear, viewMonth);
+      const paid  = fm.payment!==null&&fm.payment!==undefined;
+      const diff  = paid ? Math.min(5,Math.max(-5, fm.payment - total)) : null;
+      return (
+        <div>
+          {/* Month nav */}
+          <div style={{...S.row,justifyContent:"space-between",margin:"14px 16px 0"}}>
+            <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(-1)}>‹</button>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#3d2b1f",fontWeight:600}}>{monthLabel}</div>
+            <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(1)}>›</button>
+          </div>
+
+          {/* Summary card */}
+          <div style={{...S.card,background:"linear-gradient(135deg,#3d2b1f,#7a5230)",color:"#f5e6c8"}}>
+            <div style={{fontSize:11,color:"#c8913a",marginBottom:4}}>Mein Konto · {monthLabel}</div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:38,fontWeight:700}}>{total.toFixed(2)}€</div>
+            <div style={{fontSize:11,color:"#d4b88a",marginTop:4}}>
+              Grundgebühr {base.toFixed(2)}€
+              {extras.length>0&&` + Extras ${extras.reduce((a,e)=>a+Number(e.amount),0).toFixed(2)}€`}
+              {carry!==0&&` ${carry>0?"+":""} ${carry.toFixed(2)}€ Übertrag`}
             </div>
-          ))}
-        </div>
-        {notPaid.length>0&&(
-          <div style={{...S.card,background:"#fff8f8",border:"1.5px solid #f5c0c0"}}>
-            <div style={{fontWeight:700,fontSize:13,color:"#c0392b",marginBottom:10}}>📲 WhatsApp-Erinnerung</div>
-            {notPaid.map(m=>(
-              <div key={m.id} style={{...S.row,justifyContent:"space-between",marginBottom:8}}>
-                <div style={{fontSize:12}}>{m.name}</div>
-                {m.phone&&<a href={`https://wa.me/${m.phone.replace(/[^0-9]/g,"")}?text=Hallo%20${encodeURIComponent(m.name.split(" ")[0])}%2C%20bitte%20vergiss%20nicht%20die%20Stallgeb%C3%BChr!%20%F0%9F%90%B4`}
-                  style={{...S.btn("primary"),textDecoration:"none",padding:"5px 12px",fontSize:11,display:"inline-block"}}>WhatsApp</a>}
+            <div style={{marginTop:12,padding:"8px 12px",borderRadius:10,background:paid?"rgba(255,255,255,.1)":"rgba(192,57,43,.3)"}}>
+              {paid
+                ? <span style={{fontSize:12,fontWeight:600}}>✓ Zahlung eingegangen: {Number(fm.payment).toFixed(2)}€{diff!==0?` · Übertrag nächsten Monat: ${diff>0?"+":""}${diff?.toFixed(2)}€`:""}</span>
+                : <span style={{fontSize:12,fontWeight:600,color:"#ffb3a7"}}>⏳ Zahlung noch ausstehend</span>}
+            </div>
+          </div>
+
+          {/* Extras card */}
+          <div style={S.card}>
+            <div style={{...S.row,justifyContent:"space-between",marginBottom:10}}>
+              <div style={S.cTitle}>Zusatzdienste</div>
+              <button style={{...S.btn("primary"),padding:"7px 12px",fontSize:12}} onClick={()=>{setAddExtra(m.id);setExtraForm({type:"Decken waschen",amount:"5",desc:""});}}>+ Hinzufügen</button>
+            </div>
+            {extras.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Keine Zusätze diesen Monat</div>}
+            {extras.map(e=>(
+              <div key={e.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:500}}>{e.type}</div>
+                  {e.desc&&<div style={{fontSize:11,color:"#8b6040"}}>{e.desc}</div>}
+                </div>
+                <div style={{...S.row,gap:8}}>
+                  <span style={{fontWeight:700,fontSize:13,color:"#c8913a"}}>{Number(e.amount).toFixed(2)}€</span>
+                  {!paid&&<button onClick={()=>handleRemoveExtra(m.id,e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:2}}><Ic n="x" s={13}/></button>}
+                </div>
               </div>
             ))}
+            {carry!==0&&(
+              <div style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderTop:"1px solid #f0e8d8",marginTop:4}}>
+                <div style={{fontSize:12,color:"#8b6040"}}>Übertrag Vormonat</div>
+                <span style={{fontWeight:700,fontSize:13,color:carry>0?"#27ae60":"#c0392b"}}>{carry>0?"+":""}{carry.toFixed(2)}€</span>
+              </div>
+            )}
+            <div style={{...S.row,justifyContent:"space-between",padding:"10px 0 0",borderTop:"2px solid #e2d5c0",marginTop:6}}>
+              <div style={{fontWeight:700,fontSize:14}}>Gesamt</div>
+              <div style={{fontWeight:700,fontSize:18,color:"#3d2b1f"}}>{total.toFixed(2)}€</div>
+            </div>
           </div>
-        )}
+
+          {/* Add extra modal */}
+          {addExtra===m.id&&(
+            <div style={S.modal}><div style={S.mBox}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Zusatzdienst buchen</div>
+              <label style={S.label}>Typ</label>
+              <select style={S.input} value={extraForm.type} onChange={e=>setExtraForm(p=>({...p,type:e.target.value,amount:e.target.value==="Decken waschen"?"5":p.amount}))}>
+                <option>Decken waschen</option>
+                <option>Sonstiges</option>
+              </select>
+              <label style={S.label}>Betrag (€)</label>
+              <input style={S.input} type="number" step="0.50" min="0" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
+              <label style={S.label}>Beschreibung (optional)</label>
+              <input style={S.input} placeholder="z.B. 2× Decken" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
+              <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+                <button style={S.btn("light")} onClick={()=>setAddExtra(null)}>Abbrechen</button>
+                <button style={S.btn("primary")} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
+              </div>
+            </div></div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Admin view ──────────────────────────────────────────────────────────
+    const totalOwed    = einsteller.reduce((a,m)=>a+calcTotal(m.id,viewYear,viewMonth),0);
+    const totalReceived= einsteller.reduce((a,m)=>{ const fm=getFinMonth(m.id,viewYear,viewMonth); return a+(fm.payment||0); },0);
+
+    return (
+      <div>
+        {/* Month nav */}
+        <div style={{...S.row,justifyContent:"space-between",margin:"14px 16px 0"}}>
+          <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(-1)}>‹</button>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#3d2b1f",fontWeight:600}}>{monthLabel}</div>
+          <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(1)}>›</button>
+        </div>
+
+        {/* Summary banner */}
+        <div style={{...S.card,background:"linear-gradient(135deg,#3d2b1f,#7a5230)",color:"#f5e6c8"}}>
+          <div style={{fontSize:11,color:"#c8913a",marginBottom:4}}>Stallübersicht · {monthLabel}</div>
+          <div style={{...S.row,justifyContent:"space-between",alignItems:"flex-end"}}>
+            <div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:32,fontWeight:700}}>{totalReceived.toFixed(2)}€</div>
+              <div style={{fontSize:11,color:"#d4b88a"}}>eingegangen von {totalOwed.toFixed(2)}€</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:22,fontWeight:700,color:totalReceived>=totalOwed?"#a8e6cf":"#ffb3a7"}}>{einsteller.filter(m=>getFinMonth(m.id,viewYear,viewMonth).payment!==null&&getFinMonth(m.id,viewYear,viewMonth).payment!==undefined).length}/{einsteller.length}</div>
+              <div style={{fontSize:10,color:"#d4b88a"}}>bezahlt</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Per-member cards */}
+        {einsteller.map(m=>{
+          const fm     = getFinMonth(m.id, viewYear, viewMonth);
+          const base   = getBaseFee(m.id);
+          const extras = fm.extras||[];
+          const carry  = Number(fm.carryover||0);
+          const total  = calcTotal(m.id, viewYear, viewMonth);
+          const paid   = fm.payment!==null&&fm.payment!==undefined;
+          const diff   = paid ? Math.min(5,Math.max(-5,fm.payment-total)) : null;
+          const editingFee = editFee[m.id]!==undefined;
+          const editingPay = editPay[m.id]!==undefined;
+
+          return (
+            <div key={m.id} style={S.card}>
+              {/* Header */}
+              <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+                <div style={{...S.row,gap:10}}>
+                  <div style={S.ava()}>{m.name.charAt(0)}</div>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:13}}>{m.name}</div>
+                    <div style={{fontSize:11,color:"#8b6040"}}>🐴 {m.horse}</div>
+                  </div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontWeight:700,fontSize:18,color:"#3d2b1f"}}>{total.toFixed(2)}€</div>
+                  <div style={{fontSize:10,color:paid?"#555":"#c0392b",fontWeight:600}}>{paid?`✓ ${Number(fm.payment).toFixed(2)}€ erhalten`:"⚠️ Offen"}</div>
+                </div>
+              </div>
+
+              {/* Base fee row */}
+              <div style={{...S.row,justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f0e8d8"}}>
+                <div style={{fontSize:12,color:"#8b6040"}}>Grundgebühr</div>
+                {editingFee
+                  ? <div style={{...S.row,gap:6}}>
+                      <input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.50" value={editFee[m.id]} onChange={e=>setEditFee(p=>({...p,[m.id]:e.target.value}))}/>
+                      <button style={{...S.btn("primary"),padding:"4px 10px",fontSize:11}} onClick={()=>handleSaveFee(m.id)}>OK</button>
+                      <button style={{...S.btn("light"),padding:"4px 8px",fontSize:11}} onClick={()=>setEditFee(p=>({...p,[m.id]:undefined}))}>✕</button>
+                    </div>
+                  : <div style={{...S.row,gap:8}}>
+                      <span style={{fontWeight:600,fontSize:13}}>{base.toFixed(2)}€</span>
+                      <button onClick={()=>setEditFee(p=>({...p,[m.id]:String(base)}))} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#8b6040"}}>✏️</button>
+                    </div>}
+              </div>
+
+              {/* Extras */}
+              {extras.map(e=>(
+                <div key={e.id} style={{...S.row,justifyContent:"space-between",padding:"5px 0 5px 10px",borderBottom:"1px solid #f5f0e8"}}>
+                  <div style={{fontSize:11,color:"#8b6040"}}>+ {e.type}{e.desc?` · ${e.desc}`:""}</div>
+                  <span style={{fontSize:12,fontWeight:600,color:"#c8913a"}}>{Number(e.amount).toFixed(2)}€</span>
+                </div>
+              ))}
+
+              {/* Carryover */}
+              {carry!==0&&(
+                <div style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
+                  <div style={{fontSize:11,color:"#8b6040"}}>Übertrag Vormonat</div>
+                  <span style={{fontSize:12,fontWeight:600,color:carry>0?"#27ae60":"#c0392b"}}>{carry>0?"+":""}{carry.toFixed(2)}€</span>
+                </div>
+              )}
+
+              {/* Total */}
+              <div style={{...S.row,justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #e2d5c0"}}>
+                <div style={{fontWeight:700,fontSize:13}}>Gesamt fällig</div>
+                <div style={{fontWeight:700,fontSize:15}}>{total.toFixed(2)}€</div>
+              </div>
+
+              {/* Payment entry */}
+              <div style={{...S.row,justifyContent:"space-between",padding:"8px 0 0"}}>
+                <div style={{fontSize:12,color:"#8b6040"}}>Zahlung eingetragen</div>
+                {editingPay
+                  ? <div style={{...S.row,gap:6}}>
+                      <input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.50" value={editPay[m.id]} onChange={e=>setEditPay(p=>({...p,[m.id]:e.target.value}))} placeholder={total.toFixed(2)}/>
+                      <button style={{...S.btn("primary"),padding:"4px 10px",fontSize:11}} onClick={()=>handleSavePayment(m.id)}>OK</button>
+                      <button style={{...S.btn("light"),padding:"4px 8px",fontSize:11}} onClick={()=>setEditPay(p=>({...p,[m.id]:undefined}))}>✕</button>
+                    </div>
+                  : <div style={{...S.row,gap:8}}>
+                      <span style={{fontWeight:600,fontSize:13,color:paid?"#555":"#c0392b"}}>{paid?`${Number(fm.payment).toFixed(2)}€`:"–"}</span>
+                      <button onClick={()=>setEditPay(p=>({...p,[m.id]:paid?String(fm.payment):String(total)}))} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#8b6040"}}>✏️</button>
+                    </div>}
+              </div>
+              {paid&&diff!==0&&(
+                <div style={{fontSize:11,color:diff>0?"#27ae60":"#c0392b",marginTop:4,fontWeight:600}}>
+                  → Übertrag nächsten Monat: {diff>0?"+":""}{diff.toFixed(2)}€
+                </div>
+              )}
+
+              {/* WhatsApp reminder */}
+              {!paid&&m.phone&&(
+                <a href={`https://wa.me/${m.phone.replace(/[^0-9]/g,"")}?text=Hallo%20${encodeURIComponent(m.name.split(" ")[0])}%2C%20deine%20Stallgeb%C3%BChr%20f%C3%BCr%20${encodeURIComponent(monthLabel)}%20betr%C3%A4gt%20${total.toFixed(2).replace(".",",")}%E2%82%AC.%20Bitte%20%C3%BCberweise%20zeitnah!%20%F0%9F%90%B4`}
+                  style={{...S.btn("primary"),textDecoration:"none",padding:"6px 14px",fontSize:11,display:"inline-block",marginTop:10}}>
+                  📲 WhatsApp Erinnerung
+                </a>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   };
