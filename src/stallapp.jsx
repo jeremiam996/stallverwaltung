@@ -474,6 +474,27 @@ export default function StallApp() {
             </div></div>
           </div>
         )}
+        {isAdmin&&(
+          <div style={S.card}>
+            <div style={S.cTitle}>💰 Zahlungsübersicht</div>
+            {members.filter(m=>m.type==="einsteller").map(m=>{
+              const fm=getFinMonth(m.id,curYear,curMonth);
+              const total=calcTotal(m.id,curYear,curMonth);
+              const paid=fm.payment!==null&&fm.payment!==undefined;
+              return (
+                <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:500}}>{m.name}</div>
+                    <div style={{fontSize:10,color:"#8b6040"}}>🐴 {m.horse} · {total.toFixed(2)}€</div>
+                  </div>
+                  {paid
+                    ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ {Number(fm.payment).toFixed(2)}€</span>
+                    : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Offen</span>}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {isE&&(
           <div style={S.card}>
             <div style={S.cTitle}>Mein Überblick</div>
@@ -486,36 +507,26 @@ export default function StallApp() {
               {mC>=mQ?<span style={{color:"#27ae60",fontWeight:700,fontSize:12}}>✓ Erledigt!</span>:<span style={{color:"#c0392b",fontWeight:700,fontSize:12}}>Noch offen</span>}
             </div>
             {/* Zahlungsstatus */}
-            {currentUser.type!=="reitbeteiligung"&&(
-              <div style={{...S.row,justifyContent:"space-between",marginTop:4,paddingTop:10,borderTop:"1px solid #f0e8d8"}}>
-                <div style={{fontSize:13}}>💰 Stallgebühr {today.toLocaleDateString("de-DE",{month:"long"})}</div>
-                {currentUser.paid
-                  ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ Bezahlt</span>
-                  : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Ausstehend</span>}
-              </div>
-            )}
-            <button style={{...S.btn("teal"),padding:"8px 14px",fontSize:11,marginTop:12}} onClick={()=>{setVacTargetId(currentUser.id);setNewVac({from:"",to:"",note:""});setShowAddVacation(true);}}>
-              🌴 Urlaub eintragen
-            </button>
-          </div>
-        )}
-        {/* Admin: Zahlungsübersicht aller Einsteller */}
-        {isAdmin&&(
-          <div style={S.card}>
-            <div style={S.cTitle}>💰 Zahlungsübersicht</div>
-            {members.filter(m=>m.type!=="reitbeteiligung").map(m=>(
-              <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:500}}>{m.name}</div>
-                  <div style={{fontSize:10,color:"#8b6040"}}>{m.type==="admin"?"👑 Admin":"🐴 Einsteller"} · {m.horse}</div>
+            {currentUser.type!=="reitbeteiligung"&&(()=>{
+              const hFm    = getFinMonth(currentUser.id, curYear, curMonth);
+              const hTotal = calcTotal(currentUser.id, curYear, curMonth);
+              const hPaid  = hFm.payment!==null&&hFm.payment!==undefined;
+              return (
+                <div style={{...S.row,justifyContent:"space-between",marginTop:4,paddingTop:10,borderTop:"1px solid #f0e8d8"}}>
+                  <div>
+                    <div style={{fontSize:13}}>💰 Stallgebühr {today.toLocaleDateString("de-DE",{month:"long"})}</div>
+                    <div style={{fontSize:11,color:"#aaa",marginTop:1}}>{hTotal.toFixed(2)}€ fällig</div>
+                  </div>
+                  {hPaid
+                    ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ {Number(hFm.payment).toFixed(2)}€</span>
+                    : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Ausstehend</span>}
                 </div>
-                {m.paid
-                  ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ Bezahlt</span>
-                  : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Offen</span>}
-              </div>
-            ))}
+              );
+            })()}
+
           </div>
         )}
+
         {/* ── Mini Month Calendar ── */}
         {(()=>{
           const [selDay, setSelDay] = React.useState(null);
@@ -534,12 +545,14 @@ export default function StallApp() {
             return { k, myMist, myVac, dayEvts };
           };
 
-          // dot color priority: vacation > mist > event
-          const getDotColor = (info) => {
-            if(info.myVac)          return "#16a085";
-            if(info.myMist)         return "#c8913a";
-            if(info.dayEvts.length) return info.dayEvts[0].color;
-            return null;
+          const getDots = (info, isSelected) => {
+            const dots = [];
+            if(info.myVac)  dots.push("#16a085");
+            if(info.myMist) dots.push("#c8913a");
+            info.dayEvts.forEach(e=>dots.push(e.color));
+            return dots.map((c,i)=>(
+              <div key={i} style={{width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":c,flexShrink:0}}/>
+            ));
           };
 
           const selInfo = selDay ? getDayInfo(selDay) : null;
@@ -557,14 +570,14 @@ export default function StallApp() {
               <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
                 {Array.from({length:leadingBlanks}).map((_,i)=><div key={"b"+i}/>)}
                 {calDays.map(day=>{
-                  const info     = getDayInfo(day);
-                  const dotColor = getDotColor(info);
-                  const isToday  = info.k===dkl(today);
+                  const info       = getDayInfo(day);
+                  const isToday    = info.k===dkl(today);
                   const isSelected = selDay && dkl(day)===dkl(selDay);
                   const hasContent = info.myMist||info.myVac||info.dayEvts.length>0;
+                  const dots       = getDots(info, isSelected);
                   return (
                     <div key={info.k}
-                      onClick={()=>hasContent&&setSelDay(prev=>prev&&dk(prev)===info.k?null:day)}
+                      onClick={()=>hasContent&&setSelDay(prev=>prev&&dkl(prev)===info.k?null:day)}
                       style={{
                         aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",
                         alignItems:"center",justifyContent:"center",gap:2,
@@ -574,7 +587,7 @@ export default function StallApp() {
                         transition:"all .15s"
                       }}>
                       <div style={{fontSize:10,fontWeight:isToday?700:400,color:isSelected?"#fff":info.myMist?"#c8913a":"#2c2416"}}>{day.getDate()}</div>
-                      {dotColor&&<div style={{width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":dotColor}}/>}
+                      {dots.length>0&&<div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>}
                     </div>
                   );
                 })}
@@ -635,22 +648,7 @@ export default function StallApp() {
             </div>
           ))}
         </div>
-        {showAddVacation&&(
-          <div style={S.modal}><div style={S.mBox}>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>🌴 Urlaub eintragen</div>
-            <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>für: <b>{members.find(m=>m.id===vacTargetId)?.name}</b></div>
-            <label style={S.label}>Von</label>
-            <input type="date" style={S.input} value={newVac.from} onChange={e=>setNewVac(p=>({...p,from:e.target.value}))}/>
-            <label style={S.label}>Bis</label>
-            <input type="date" style={S.input} value={newVac.to} onChange={e=>setNewVac(p=>({...p,to:e.target.value}))}/>
-            <label style={S.label}>Notiz (optional)</label>
-            <input style={S.input} placeholder="z.B. Sommerurlaub" value={newVac.note} onChange={e=>setNewVac(p=>({...p,note:e.target.value}))}/>
-            <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
-              <button style={S.btn("light")} onClick={()=>setShowAddVacation(false)}>Abbrechen</button>
-              <button style={S.btn("teal")} onClick={addVacation}>Eintragen</button>
-            </div>
-          </div></div>
-        )}
+
       </div>
     );
   };
@@ -686,6 +684,55 @@ export default function StallApp() {
           </div>
         );})}
       </div>
+        {/* ── Urlaube ── */}
+        <div style={S.card}>
+          <div style={{...S.row,justifyContent:"space-between",marginBottom:10}}>
+            <div style={S.cTitle}>🌴 Urlaube</div>
+            <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}} onClick={()=>openAddVacation(currentUser.id)}>+ Eigenen eintragen</button>
+          </div>
+          {(isAdmin?[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")]:[currentUser]).map(m=>{
+            const vacs=vacations[m.id]||[]; const canEdit=isAdmin||currentUser.id===m.id;
+            if(vacs.length===0) return null;
+            return vacs.map(v=>(
+              <div key={v.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f5f0e8"}}>
+                <div>
+                  {isAdmin&&<span style={{fontSize:12,fontWeight:600}}>{m.name.split(" ")[0]} · </span>}
+                  <span style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(v.from+"T00:00:00"))} – {fmtSh(new Date(v.to+"T00:00:00"))}</span>
+                  {v.note&&<span style={{fontSize:10,color:"#aaa"}}> · {v.note}</span>}
+                </div>
+                {canEdit&&<button onClick={()=>deleteVacation(m.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>}
+              </div>
+            ));
+          })}
+          {isAdmin&&(
+            <div style={{marginTop:8}}>
+              <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Urlaub für andere eintragen:</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].filter(m=>m.id!==currentUser.id).map(m=>(
+                  <button key={m.id} style={{...S.btn("light"),padding:"5px 10px",fontSize:11,borderRadius:8}} onClick={()=>openAddVacation(m.id)}>+ {m.name.split(" ")[0]}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Vacation modal */}
+        {showAddVacation&&(
+          <div style={S.modal}><div style={S.mBox}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>🌴 Urlaub eintragen</div>
+            <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>für: <b>{members.find(m=>m.id===vacTargetId)?.name}</b></div>
+            <label style={S.label}>Von</label>
+            <input type="date" style={S.input} value={newVac.from} onChange={e=>setNewVac(p=>({...p,from:e.target.value}))}/>
+            <label style={S.label}>Bis</label>
+            <input type="date" style={S.input} value={newVac.to} onChange={e=>setNewVac(p=>({...p,to:e.target.value}))}/>
+            <label style={S.label}>Notiz (optional)</label>
+            <input style={S.input} placeholder="z.B. Sommerurlaub" value={newVac.note} onChange={e=>setNewVac(p=>({...p,note:e.target.value}))}/>
+            <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+              <button style={S.btn("light")} onClick={()=>setShowAddVacation(false)}>Abbrechen</button>
+              <button style={S.btn("teal")} onClick={addVacation}>Eintragen</button>
+            </div>
+          </div></div>
+        )}
     </div>
   );};
 
@@ -724,38 +771,6 @@ export default function StallApp() {
 
     return (
       <div>
-        {/* Vacation card */}
-        <div style={S.card}>
-          <div style={{...S.row,justifyContent:"space-between",marginBottom:10}}>
-            <div style={S.cTitle}>🌴 Urlaube</div>
-            <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}} onClick={()=>openAddVacation(currentUser.id)}>+ Eigenen eintragen</button>
-          </div>
-          {vacMembers.map(m=>{
-            const vacs=vacations[m.id]||[]; const canEdit=isAdmin||currentUser.id===m.id;
-            if(vacs.length===0) return null;
-            return vacs.map(v=>(
-              <div key={v.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f5f0e8"}}>
-                <div>
-                  {isAdmin&&<span style={{fontSize:12,fontWeight:600}}>{m.name.split(" ")[0]} · </span>}
-                  <span style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(v.from+"T00:00:00"))} – {fmtSh(new Date(v.to+"T00:00:00"))}</span>
-                  {v.note&&<span style={{fontSize:10,color:"#aaa"}}> · {v.note}</span>}
-                </div>
-                {canEdit&&<button onClick={()=>deleteVacation(m.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>}
-              </div>
-            ));
-          })}
-          {isAdmin&&(
-            <div style={{marginTop:8}}>
-              <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Urlaub für andere eintragen:</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].filter(m=>m.id!==currentUser.id).map(m=>(
-                  <button key={m.id} style={{...S.btn("light"),padding:"5px 10px",fontSize:11,borderRadius:8}} onClick={()=>openAddVacation(m.id)}>+ {m.name.split(" ")[0]}</button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* ── EINSTELLER: Monatsansicht (nur eigene) ── */}
         {!isAdmin&&(
           <div style={S.card}>
@@ -974,22 +989,6 @@ export default function StallApp() {
           </div>
         )}
 
-        {showAddVacation&&(
-          <div style={S.modal}><div style={S.mBox}>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>🌴 Urlaub eintragen</div>
-            <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>für: <b>{members.find(m=>m.id===vacTargetId)?.name}</b></div>
-            <label style={S.label}>Von</label>
-            <input type="date" style={S.input} value={newVac.from} onChange={e=>setNewVac(p=>({...p,from:e.target.value}))}/>
-            <label style={S.label}>Bis</label>
-            <input type="date" style={S.input} value={newVac.to} onChange={e=>setNewVac(p=>({...p,to:e.target.value}))}/>
-            <label style={S.label}>Notiz (optional)</label>
-            <input style={S.input} placeholder="z.B. Sommerurlaub" value={newVac.note} onChange={e=>setNewVac(p=>({...p,note:e.target.value}))}/>
-            <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
-              <button style={S.btn("light")} onClick={()=>setShowAddVacation(false)}>Abbrechen</button>
-              <button style={S.btn("teal")} onClick={addVacation}>Eintragen</button>
-            </div>
-          </div></div>
-        )}
       </div>
     );
   };
@@ -1060,7 +1059,50 @@ export default function StallApp() {
     };
     return (
       <div>
-        {!isAdmin&&<div style={{...S.card,background:"#f5f0e8",border:"1.5px solid #e2d5c0"}}><div style={{...S.row,gap:8}}><Ic n="lock" s={16}/><div style={{fontSize:12,color:"#8b6040"}}>Mitgliederverwaltung ist nur für Admins.</div></div></div>}
+        {!isAdmin&&(()=>{
+          const [pinMode,setPinMode]=React.useState(false);
+          const [pins,setPins]=React.useState({old:"",n1:"",n2:""});
+          const [pinErr,setPinErr]=React.useState("");
+          const handlePinChange=async()=>{
+            if(pins.old!==currentUser.pin){setPinErr("Alte PIN falsch");return;}
+            if(pins.n1.length!==4){setPinErr("Neue PIN muss 4 Ziffern haben");return;}
+            if(pins.n1!==pins.n2){setPinErr("PINs stimmen nicht überein");return;}
+            await saveMemberEdit(currentUser.id,{...currentUser,pin:pins.n1,einstellerId:currentUser.einstellerId||""});
+            setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");
+            showToast("✅ PIN erfolgreich geändert!");
+          };
+          return (
+            <div style={S.card}>
+              <div style={S.cTitle}>Mein Profil</div>
+              <div style={{...S.row,gap:10,marginBottom:12}}>
+                <div style={S.ava()}>{currentUser.name.charAt(0)}</div>
+                <div>
+                  <div style={{fontWeight:600,fontSize:14}}>{currentUser.name}</div>
+                  <div style={{fontSize:11,color:"#8b6040"}}>{currentUser.type==="einsteller"?"🐴 Einsteller":"🤝 Reitbeteiligung"}{currentUser.horse?` · ${currentUser.horse}`:""}</div>
+                  {currentUser.phone&&<div style={{fontSize:11,color:"#aaa"}}>📞 {currentUser.phone}</div>}
+                </div>
+              </div>
+              {!pinMode?(
+                <button style={{...S.btn("light"),padding:"8px 14px",fontSize:12}} onClick={()=>setPinMode(true)}>🔑 PIN ändern</button>
+              ):(
+                <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a",marginTop:8}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#c8913a",marginBottom:10}}>🔑 PIN ändern</div>
+                  <label style={S.label}>Alte PIN</label>
+                  <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.old} onChange={e=>setPins(p=>({...p,old:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
+                  <label style={S.label}>Neue PIN</label>
+                  <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.n1} onChange={e=>setPins(p=>({...p,n1:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
+                  <label style={S.label}>Neue PIN bestätigen</label>
+                  <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.n2} onChange={e=>setPins(p=>({...p,n2:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
+                  {pinErr&&<div style={{fontSize:11,color:"#c0392b",marginBottom:8}}>{pinErr}</div>}
+                  <div style={{...S.row,justifyContent:"flex-end",gap:8}}>
+                    <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={()=>{setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");}}>Abbrechen</button>
+                    <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={handlePinChange}>💾 Speichern</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {einstellerList.map(e=>(
           <div key={e.id} style={S.card}>
             <MRow m={e} isChild={false}/>
@@ -1361,12 +1403,33 @@ export default function StallApp() {
               </div>
 
               {/* Extras */}
+              <div style={{...S.row,justifyContent:"space-between",padding:"4px 0 4px",borderBottom:"1px solid #f5f0e8"}}>
+                <div style={{fontSize:11,color:"#8b6040",fontWeight:600}}>Zusätze</div>
+                <button style={{...S.btn("primary"),padding:"3px 10px",fontSize:11}} onClick={()=>{setAddExtra(m.id);setExtraForm({type:"Decken waschen",amount:"5",desc:""});}}>+ Hinzufügen</button>
+              </div>
               {extras.map(e=>(
                 <div key={e.id} style={{...S.row,justifyContent:"space-between",padding:"5px 0 5px 10px",borderBottom:"1px solid #f5f0e8"}}>
                   <div style={{fontSize:11,color:"#8b6040"}}>+ {e.type}{e.desc?` · ${e.desc}`:""}</div>
-                  <span style={{fontSize:12,fontWeight:600,color:"#c8913a"}}>{Number(e.amount).toFixed(2)}€</span>
+                  <div style={{...S.row,gap:6}}>
+                    <span style={{fontSize:12,fontWeight:600,color:"#c8913a"}}>{Number(e.amount).toFixed(2)}€</span>
+                    <button onClick={()=>handleRemoveExtra(m.id,e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:2}}><Ic n="x" s={12}/></button>
+                  </div>
                 </div>
               ))}
+              {addExtra===m.id&&(
+                <div style={{background:"#faf6f0",borderRadius:8,padding:10,border:"1px solid #c8913a",margin:"6px 0"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#c8913a",marginBottom:8}}>Zusatzdienst hinzufügen</div>
+                  <select style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} value={extraForm.type} onChange={e=>setExtraForm(p=>({...p,type:e.target.value,amount:e.target.value==="Decken waschen"?"5":p.amount}))}>
+                    <option>Decken waschen</option><option>Sonstiges</option>
+                  </select>
+                  <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} type="number" step="0.50" min="0" placeholder="Betrag (€)" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
+                  <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} placeholder="Beschreibung (optional)" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
+                  <div style={{...S.row,justifyContent:"flex-end",gap:6}}>
+                    <button style={{...S.btn("light"),padding:"5px 10px",fontSize:11}} onClick={()=>setAddExtra(null)}>Abbrechen</button>
+                    <button style={{...S.btn("primary"),padding:"5px 10px",fontSize:11}} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
+                  </div>
+                </div>
+              )}
 
               {/* Carryover */}
               {carry!==0&&(
