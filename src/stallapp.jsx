@@ -470,6 +470,112 @@ export default function StallApp() {
             ))}
           </div>
         )}
+        {/* ── Mini Month Calendar ── */}
+        {(()=>{
+          const [selDay, setSelDay] = React.useState(null);
+          const calYear  = today.getFullYear();
+          const calMonth = today.getMonth();
+          const calDays  = [];
+          const d = new Date(calYear, calMonth, 1);
+          while(d.getMonth()===calMonth){ calDays.push(new Date(d)); d.setDate(d.getDate()+1); }
+          const leadingBlanks = (new Date(calYear,calMonth,1).getDay()||7)-1;
+
+          const getDayInfo = (day) => {
+            const k = dk(day);
+            const myMist  = (mistData[k]||[]).includes(currentUser.id);
+            const myVac   = isOnVacationDay(currentUser.id, k, vacations);
+            const dayEvts = events.filter(e=>e.date===k);
+            return { k, myMist, myVac, dayEvts };
+          };
+
+          // dot color priority: vacation > mist > event
+          const getDotColor = (info) => {
+            if(info.myVac)          return "#16a085";
+            if(info.myMist)         return "#c8913a";
+            if(info.dayEvts.length) return info.dayEvts[0].color;
+            return null;
+          };
+
+          const selInfo = selDay ? getDayInfo(selDay) : null;
+
+          return (
+            <div style={S.card}>
+              <div style={S.cTitle}>📅 {today.toLocaleDateString("de-DE",{month:"long",year:"numeric"})}</div>
+              {/* Weekday headers */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>
+                {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
+                  <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700}}>{d}</div>
+                ))}
+              </div>
+              {/* Day cells */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+                {Array.from({length:leadingBlanks}).map((_,i)=><div key={"b"+i}/>)}
+                {calDays.map(day=>{
+                  const info     = getDayInfo(day);
+                  const dotColor = getDotColor(info);
+                  const isToday  = info.k===dk(today);
+                  const isSelected = selDay && dk(day)===dk(selDay);
+                  const hasContent = info.myMist||info.myVac||info.dayEvts.length>0;
+                  return (
+                    <div key={info.k}
+                      onClick={()=>hasContent&&setSelDay(prev=>prev&&dk(prev)===info.k?null:day)}
+                      style={{
+                        aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",
+                        alignItems:"center",justifyContent:"center",gap:2,
+                        cursor:hasContent?"pointer":"default",
+                        background:isSelected?"#3d2b1f":info.myMist?"#f5e8d4":info.myVac?"#e8f8f5":"#fff",
+                        border:isToday?"2px solid #c8913a":isSelected?"2px solid #3d2b1f":"1px solid #ede5d5",
+                        transition:"all .15s"
+                      }}>
+                      <div style={{fontSize:10,fontWeight:isToday?700:400,color:isSelected?"#fff":info.myMist?"#c8913a":"#2c2416"}}>{day.getDate()}</div>
+                      {dotColor&&<div style={{width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":dotColor}}/>}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Legend */}
+              <div style={{display:"flex",gap:10,marginTop:10,fontSize:10,color:"#aaa",flexWrap:"wrap"}}>
+                <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c8913a",display:"inline-block"}}/> Mein Mist</span>
+                <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#16a085",display:"inline-block"}}/> Urlaub</span>
+                <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c0392b",display:"inline-block"}}/> Termin</span>
+              </div>
+              {/* Day detail popup */}
+              {selInfo&&(
+                <div style={{marginTop:12,background:"#faf6f0",borderRadius:10,padding:"10px 14px",border:"1px solid #e2d5c0"}}>
+                  <div style={{fontWeight:700,fontSize:12,color:"#3d2b1f",marginBottom:8}}>
+                    {selDay.toLocaleDateString("de-DE",{weekday:"long",day:"2-digit",month:"long"})}
+                  </div>
+                  {selInfo.myVac&&(
+                    <div style={{...S.row,gap:8,marginBottom:6}}>
+                      <span style={{fontSize:14}}>🌴</span>
+                      <span style={{fontSize:12,color:"#16a085",fontWeight:600}}>Dein Urlaub</span>
+                    </div>
+                  )}
+                  {selInfo.myMist&&(
+                    <div style={{...S.row,gap:8,marginBottom:6}}>
+                      <span style={{width:10,height:10,borderRadius:"50%",background:"#c8913a",flexShrink:0}}/>
+                      <span style={{fontSize:12,color:"#c8913a",fontWeight:600}}>🧹 Dein Mistdienst</span>
+                    </div>
+                  )}
+                  {selInfo.dayEvts.map(e=>(
+                    <div key={e.id} style={{...S.row,gap:8,marginBottom:6}}>
+                      <span style={{width:10,height:10,borderRadius:"50%",background:e.color,flexShrink:0}}/>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600,color:"#2c2416"}}>{e.type}</div>
+                        <div style={{fontSize:10,color:"#8b6040"}}>
+                          {e.time?`🕐 ${e.time} Uhr · `:""}
+                          {e.note||""}
+                          {e.createdBy?` · 👤 ${e.createdBy}`:""}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         <div style={S.card}>
           <div style={S.cTitle}>Nächste Termine</div>
           {upcomingEvents.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Keine Termine geplant</div>}
@@ -534,25 +640,6 @@ export default function StallApp() {
           </div>
         );})}
       </div>
-      {showAddEvent&&(
-        <div style={S.modal}><div style={S.mBox}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Neuer Termin</div>
-          <label style={S.label}>Typ</label>
-          <select style={S.input} value={newEvent.type} onChange={e=>setNewEvent(p=>({...p,type:e.target.value}))}>
-            {EVENT_TYPES.map(t=><option key={t}>{t}</option>)}
-          </select>
-          <label style={S.label}>Datum</label>
-          <input type="date" style={S.input} value={newEvent.date} onChange={e=>setNewEvent(p=>({...p,date:e.target.value}))}/>
-          <label style={S.label}>Uhrzeit</label>
-          <input type="time" style={S.input} value={newEvent.time} onChange={e=>setNewEvent(p=>({...p,time:e.target.value}))}/>
-          <label style={S.label}>Notiz</label>
-          <input style={S.input} placeholder="z.B. Alle Pferde" value={newEvent.note} onChange={e=>setNewEvent(p=>({...p,note:e.target.value}))}/>
-          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
-            <button style={S.btn("light")} onClick={()=>setShowAddEvent(false)}>Abbrechen</button>
-            <button style={S.btn("primary")} onClick={addEvent}>Speichern</button>
-          </div>
-        </div></div>
-      )}
     </div>
   );};
 
@@ -1031,6 +1118,27 @@ export default function StallApp() {
           <Ic n={t.icon} s={20}/><span style={{fontSize:9,fontWeight:600}}>{t.label}</span>
         </button>
       ))}</div>
+
+      {/* Add Event Modal — lives in root so it never remounts on keystroke */}
+      {showAddEvent&&(
+        <div style={S.modal}><div style={S.mBox}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Neuer Termin</div>
+          <label style={S.label}>Typ</label>
+          <select style={S.input} value={newEvent.type} onChange={e=>setNewEvent(p=>({...p,type:e.target.value}))}>
+            {EVENT_TYPES.map(t=><option key={t}>{t}</option>)}
+          </select>
+          <label style={S.label}>Datum</label>
+          <input type="date" style={S.input} value={newEvent.date} onChange={e=>setNewEvent(p=>({...p,date:e.target.value}))}/>
+          <label style={S.label}>Uhrzeit</label>
+          <input type="time" style={S.input} value={newEvent.time} onChange={e=>setNewEvent(p=>({...p,time:e.target.value}))}/>
+          <label style={S.label}>Notiz</label>
+          <input style={S.input} placeholder="z.B. Alle Pferde" value={newEvent.note} onChange={e=>setNewEvent(p=>({...p,note:e.target.value}))}/>
+          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+            <button style={S.btn("light")} onClick={()=>setShowAddEvent(false)}>Abbrechen</button>
+            <button style={S.btn("primary")} onClick={addEvent}>Speichern</button>
+          </div>
+        </div></div>
+      )}
     </div>
   );
 }
