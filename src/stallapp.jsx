@@ -1139,7 +1139,7 @@ export default function StallApp() {
   // FINANZEN
   // ══════════════════════════════════════════════════════════════════════════
   const FinanzenScreen = () => {
-    const einsteller = members.filter(m=>m.type==="einsteller"||m.type==="admin");
+    const einsteller = members.filter(m=>m.type==="einsteller");
     const [viewMonth, setViewMonth] = useState(today.getMonth());
     const [viewYear,  setViewYear]  = useState(today.getFullYear());
     const [editFee,   setEditFee]   = useState({}); // {memberId: feeString}
