@@ -29,7 +29,7 @@ const SEED_EVENTS = [
 
 // ── DB helpers: map DB row ↔ app object ────────────────────────────────────
 const dbToMember = r => ({ id:r.id, name:r.name, horse:r.horse||"", type:r.type, pin:r.pin, paid:r.paid, phone:r.phone||"", einstellerId:r.einsteller_id });
-const dbToEvent  = r => ({ id:r.id, type:r.type, date:r.date, time:r.time||"", note:r.note||"", color:r.color });
+const dbToEvent  = r => ({ id:r.id, type:r.type, date:r.date, time:r.time||"", note:r.note||"", color:r.color, createdBy:r.created_by||"" });
 const dbToVac    = r => ({ id:r.id, from:r.from_date, to:r.to_date, note:r.note||"" });
 
 // ── Date helpers ───────────────────────────────────────────────────────────
@@ -276,7 +276,7 @@ export default function StallApp() {
   const EVENT_COLORS = { Tierarzt:"#c0392b", Hufschmied:"#8B6914", Impfen:"#27ae60", Sonstiges:"#7f8c8d" };
   const addEvent = async () => {
     if(!newEvent.date) return;
-    const row = {...newEvent, id:Date.now(), color:EVENT_COLORS[newEvent.type]||"#7f8c8d"};
+    const row = {...newEvent, id:Date.now(), color:EVENT_COLORS[newEvent.type]||"#7f8c8d", created_by:currentUser.name};
     setEvents(p=>[...p,dbToEvent(row)]);
     await sb.from("events").insert(row);
     setNewEvent({type:"Tierarzt",date:"",time:"",note:""}); setShowAddEvent(false);
@@ -506,15 +506,19 @@ export default function StallApp() {
   // ══════════════════════════════════════════════════════════════════════════
   // CALENDAR
   // ══════════════════════════════════════════════════════════════════════════
-  const CalendarScreen = () => (
+  const CalendarScreen = () => {
+    const canAdd = isAdmin || currentUser.type==="einsteller";
+    return (
     <div>
       <div style={S.card}>
         <div style={{...S.row,justifyContent:"space-between",marginBottom:14}}>
           <div style={S.cTitle}>Termine</div>
-          {isAdmin&&<button style={{...S.btn("primary"),padding:"8px 12px"}} onClick={()=>setShowAddEvent(true)}><Ic n="plus" s={16}/></button>}
+          {canAdd&&<button style={{...S.btn("primary"),padding:"8px 12px"}} onClick={()=>setShowAddEvent(true)}><Ic n="plus" s={16}/></button>}
         </div>
-        {!isAdmin&&<div style={{background:"#f5f0e8",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#8b6040",marginBottom:12}}>📅 Termine werden vom Admin verwaltet</div>}
-        {[...events].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>(
+        {!canAdd&&<div style={{background:"#f5f0e8",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#8b6040",marginBottom:12}}>📅 Termine werden von Einstellern und Admin verwaltet</div>}
+        {[...events].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
+          const canDelete = isAdmin || e.createdBy===currentUser.name;
+          return (
           <div key={e.id} style={{display:"flex",gap:10,marginBottom:12,alignItems:"flex-start"}}>
             <div style={{width:5,borderRadius:4,background:e.color,alignSelf:"stretch",flexShrink:0,minHeight:40}}/>
             <div style={{flex:1}}>
@@ -524,10 +528,11 @@ export default function StallApp() {
               </div>
               {e.time&&<div style={{fontSize:11,color:"#8b6040",marginTop:2}}>🕐 {e.time} Uhr</div>}
               {e.note&&<div style={{fontSize:11,color:"#666",marginTop:2}}>{e.note}</div>}
+              {e.createdBy&&<div style={{fontSize:10,color:"#b89060",marginTop:3}}>👤 {e.createdBy}</div>}
             </div>
-            {isAdmin&&<button onClick={()=>deleteEvent(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="x" s={14}/></button>}
+            {canDelete&&<button onClick={()=>deleteEvent(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="x" s={14}/></button>}
           </div>
-        ))}
+        );})}
       </div>
       {showAddEvent&&(
         <div style={S.modal}><div style={S.mBox}>
@@ -549,7 +554,7 @@ export default function StallApp() {
         </div></div>
       )}
     </div>
-  );
+  );};
 
   // ══════════════════════════════════════════════════════════════════════════
   // MIST
@@ -755,6 +760,7 @@ export default function StallApp() {
             </>)}
 
             {adminView==="month"&&(<>
+              {/* Month navigation */}
               <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
                 <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o-1)}>‹</button>
                 <div style={{textAlign:"center"}}>
@@ -763,35 +769,70 @@ export default function StallApp() {
                 </div>
                 <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o+1)}>›</button>
               </div>
-              {einstellerList.map(e=>{
-                const mQ=getMonthlyQuota(e,members,vacations,viewYear,viewMonth);
-                const mC=countMistMonth(mistData,e.id,viewYear,viewMonth);
-                const bets=members.filter(m=>m.einstellerId===e.id);
-                return (
-                  <div key={e.id} style={{marginBottom:14,paddingBottom:14,borderBottom:"1px solid #f0e8d8"}}>
-                    <div style={{...S.row,justifyContent:"space-between",marginBottom:4}}>
-                      <div>
-                        <div style={{fontWeight:600,fontSize:13}}>{e.name} <span style={{fontSize:10,color:"#8b6040"}}>({e.horse})</span></div>
-                        <div style={{fontSize:10,color:"#aaa"}}>Pflicht: {mQ}×{(vacations[e.id]||[]).length>0?" · 🌴":""}</div>
-                      </div>
-                      <div style={{textAlign:"right"}}>
-                        <div style={{fontWeight:700,fontSize:20,color:mC>=mQ?"#27ae60":"#c0392b"}}>{mC}</div>
-                        <div style={{fontSize:9,color:"#aaa"}}>/{mQ}×</div>
-                      </div>
+
+              {/* Calendar grid — all members color-coded */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:8}}>
+                {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
+                  <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700,paddingBottom:3}}>{d}</div>
+                ))}
+                {Array.from({length:(new Date(viewYear,viewMonth,1).getDay()||7)-1}).map((_,i)=><div key={"e"+i}/>)}
+                {daysInMonth().map(d=>{
+                  const k          = dk(d);
+                  const bookedIds  = mistData[k]||[];
+                  const isToday    = k===dk(today);
+                  const isPast     = d < new Date(dk(today));
+                  const hasEntry   = bookedIds.length > 0;
+                  // find who booked this day (first person)
+                  const bookedMember = hasEntry ? members.find(m=>m.id===bookedIds[0]) : null;
+                  // check if anyone is on vacation this day
+                  const someoneOnVac = [...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")]
+                    .some(m=>isOnVacationDay(m.id,k,vacations));
+                  return (
+                    <div key={k}
+                      style={{
+                        aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                        background:hasEntry?"#c8913a":isPast?"#f5f0e8":"#fff",
+                        border:isToday?"2px solid #c8913a":hasEntry?"2px solid #a07030":"1px solid #e2d5c0",
+                        cursor:"default", transition:"all .15s", position:"relative"
+                      }}>
+                      <div style={{fontSize:10,fontWeight:isToday?700:400,color:hasEntry?"#fff":"#2c2416"}}>{d.getDate()}</div>
+                      {hasEntry&&<div style={{fontSize:7,color:"#fff5e0",fontWeight:600,lineHeight:1,textAlign:"center",overflow:"hidden",maxWidth:"90%",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {bookedMember?.name.split(" ")[0]}
+                      </div>}
+                      {!hasEntry&&someoneOnVac&&<div style={{fontSize:8}}>🌴</div>}
                     </div>
-                    {bets.map(rb=>{
-                      const rbQ=getMonthlyQuota(rb,members,vacations,viewYear,viewMonth);
-                      const rbC=countMistMonth(mistData,rb.id,viewYear,viewMonth);
-                      return (
-                        <div key={rb.id} style={{...S.row,justifyContent:"space-between",paddingLeft:12,marginTop:4}}>
-                          <div style={{fontSize:11,color:"#8b6040"}}>↳ {rb.name} {(vacations[rb.id]||[]).length>0&&"🌴"} <span style={{fontSize:9}}>({rbQ}×)</span></div>
-                          <div style={{fontSize:12,fontWeight:700,color:rbC>=rbQ?"#27ae60":"#c0392b"}}>{rbC}/{rbQ}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa",marginBottom:16}}>
+                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:3,background:"#c8913a",display:"inline-block"}}/> Belegt</span>
+                <span>🌴 = Urlaub</span>
+              </div>
+
+              {/* Open list */}
+              <div style={{borderTop:"1px solid #f0e8d8",paddingTop:12}}>
+                <div style={{fontWeight:700,fontSize:12,color:"#3d2b1f",marginBottom:8}}>Offene Dienste {monthLabel}</div>
+                {[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].map(m=>{
+                  const mQ=getMonthlyQuota(m,members,vacations,viewYear,viewMonth);
+                  const mC=countMistMonth(mistData,m.id,viewYear,viewMonth);
+                  const isChild=m.type==="reitbeteiligung";
+                  return (
+                    <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",paddingLeft:isChild?12:0,borderBottom:"1px solid #f5f0e8"}}>
+                      <div>
+                        {isChild&&<span style={{fontSize:9,color:"#b89060"}}>↳ </span>}
+                        <span style={{fontSize:12,fontWeight:mC>=mQ?400:600,color:mC>=mQ?"#aaa":"#2c2416"}}>{m.name.split(" ")[0]} {m.name.split(" ")[1]?.charAt(0)}.</span>
+                        {(vacations[m.id]||[]).length>0&&<span style={{fontSize:10}}> 🌴</span>}
+                      </div>
+                      <span style={{
+                        fontSize:11,fontWeight:700,
+                        color:mC>=mQ?"#27ae60":"#c0392b",
+                        background:mC>=mQ?"#d5f5e3":"#fdecea",
+                        padding:"3px 8px",borderRadius:20
+                      }}>{mC>=mQ?"✓ Erledigt":`${mC}/${mQ}×`}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </>)}
           </div>
         )}
