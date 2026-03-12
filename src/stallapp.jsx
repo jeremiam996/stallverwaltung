@@ -555,11 +555,35 @@ export default function StallApp() {
   // MIST
   // ══════════════════════════════════════════════════════════════════════════
   const MistScreen = () => {
-    const rows=[];
+    const [adminView, setAdminView] = useState("week"); // "week" | "month"
+    const [monthOffset, setMonthOffset] = useState(0);
+
+    // Month navigation
+    const viewDate  = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+    const viewYear  = viewDate.getFullYear();
+    const viewMonth = viewDate.getMonth();
+    const monthLabel = viewDate.toLocaleDateString("de-DE",{month:"long",year:"numeric"});
+
+    // All days in the viewed month
+    const daysInMonth = () => {
+      const days = [];
+      const d = new Date(viewYear, viewMonth, 1);
+      while(d.getMonth()===viewMonth){ days.push(new Date(d)); d.setDate(d.getDate()+1); }
+      return days;
+    };
+
+    // Admin week grid rows (all members)
+    const adminRows=[];
     einstellerList.forEach(e=>{
-      rows.push({member:e,isChild:false});
-      members.filter(m=>m.einstellerId===e.id).forEach(rb=>rows.push({member:rb,isChild:true}));
+      adminRows.push({member:e,isChild:false});
+      members.filter(m=>m.einstellerId===e.id).forEach(rb=>adminRows.push({member:rb,isChild:true}));
     });
+
+    // Vacation card — admin sees all, einsteller sees only own
+    const vacMembers = isAdmin
+      ? [...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")]
+      : [currentUser];
+
     return (
       <div>
         {/* Vacation card */}
@@ -568,14 +592,14 @@ export default function StallApp() {
             <div style={S.cTitle}>🌴 Urlaube</div>
             <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}} onClick={()=>openAddVacation(currentUser.id)}>+ Eigenen eintragen</button>
           </div>
-          {[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].map(m=>{
+          {vacMembers.map(m=>{
             const vacs=vacations[m.id]||[]; const canEdit=isAdmin||currentUser.id===m.id;
             if(vacs.length===0) return null;
             return vacs.map(v=>(
               <div key={v.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f5f0e8"}}>
                 <div>
-                  <span style={{fontSize:12,fontWeight:600}}>{m.name.split(" ")[0]}</span>
-                  <span style={{fontSize:11,color:"#8b6040"}}> · {fmtSh(new Date(v.from+"T00:00:00"))} – {fmtSh(new Date(v.to+"T00:00:00"))}</span>
+                  {isAdmin&&<span style={{fontSize:12,fontWeight:600}}>{m.name.split(" ")[0]} · </span>}
+                  <span style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(v.from+"T00:00:00"))} – {fmtSh(new Date(v.to+"T00:00:00"))}</span>
                   {v.note&&<span style={{fontSize:10,color:"#aaa"}}> · {v.note}</span>}
                 </div>
                 {canEdit&&<button onClick={()=>deleteVacation(m.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>}
@@ -594,106 +618,183 @@ export default function StallApp() {
           )}
         </div>
 
-        {/* Weekly grid */}
-        <div style={S.card}>
-          <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
-            <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setWeekOffset(w=>w-1)}>‹</button>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:13,color:"#3d2b1f"}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</div>
-              {weekOffset===0&&<div style={{fontSize:10,color:"#c8913a",fontWeight:600}}>DIESE WOCHE</div>}
+        {/* ── EINSTELLER: Monatsansicht (nur eigene) ── */}
+        {!isAdmin&&(
+          <div style={S.card}>
+            {/* Header */}
+            <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+              <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o-1)}>‹</button>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#3d2b1f"}}>{monthLabel}</div>
+                {monthOffset===0&&<div style={{fontSize:10,color:"#c8913a",fontWeight:600}}>DIESER MONAT</div>}
+              </div>
+              <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o+1)}>›</button>
             </div>
-            <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setWeekOffset(w=>w+1)}>›</button>
-          </div>
-          <div style={S.divider}/>
-          <div style={{display:"grid",gridTemplateColumns:"96px repeat(7,1fr)",gap:2,marginBottom:6}}>
-            <div/>
-            {weekDates.map(d=>(
-              <div key={dk(d)} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:600,lineHeight:1.3}}>
-                {d.toLocaleDateString("de-DE",{weekday:"short"})}<br/>{d.getDate()}
-              </div>
-            ))}
-          </div>
-          {rows.map(({member:m,isChild})=>{
-            const mYear=weekDates[0].getFullYear(); const mMonth=weekDates[0].getMonth();
-            const monthQ=getMonthlyQuota(m,members,vacations,mYear,mMonth);
-            const monthC=countMistMonth(mistData,m.id,mYear,mMonth);
-            const ok=monthC>=monthQ;
-            const onVacWeek=getMemberWeekQuota(m,dk(weekDates[0]),members,vacations)===0;
-            const isMe=currentUser.id===m.id;
-            const allowed=isAdmin||isMe;
-            return (
-              <div key={m.id} style={{marginBottom:4}}>
-                <div style={{display:"grid",gridTemplateColumns:"96px repeat(7,1fr)",gap:2,alignItems:"center"}}>
-                  <div style={{paddingLeft:isChild?10:0}}>
-                    {isChild&&<div style={{fontSize:8,color:"#b89060",marginBottom:1}}>↳ Beteil.</div>}
-                    <div style={{fontSize:11,fontWeight:isMe?700:500,color:isMe?"#c8913a":"#2c2416",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name.split(" ")[0]}</div>
-                    {onVacWeek?<div style={{fontSize:9,color:"#16a085",fontWeight:600}}>🌴 Urlaub</div>
-                      :<div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{monthC}/{monthQ}Mo</div>}
-                  </div>
-                  {weekDates.map(d=>{
-                    const k=dk(d);
-                    const checked=(mistData[k]||[]).includes(m.id);
-                    const isPast=d<new Date(dk(today));
-                    const onVac=isOnVacationDay(m.id,k,vacations);
-                    const takenByOther=(mistData[k]||[]).some(id=>id!==m.id);
-                    return (
-                      <div key={k} onClick={()=>allowed&&!onVac&&toggleMist(k,m.id)}
-                        style={{height:30,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:(allowed&&!onVac)?"pointer":"default",
-                          background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":isPast?"#f5f0e8":"#faf6f0",
-                          border:checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther?"2px solid #f5c0c0":isMe&&!isPast?"2px solid #c8913a55":"2px solid #e2d5c0",
-                          opacity:allowed?1:0.7,transition:"all .15s"}}>
-                        {onVac&&<span style={{fontSize:10}}>🌴</span>}
-                        {!onVac&&checked&&<span style={{color:"#fff",fontSize:11}}>✓</span>}
-                        {!onVac&&!checked&&takenByOther&&<span style={{fontSize:9,color:"#c0392b"}}>✗</span>}
-                        {!onVac&&!checked&&!takenByOther&&!allowed&&<span style={{fontSize:8,color:"#ccc"}}>🔒</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-          <div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa"}}>
-            <span>✓ = Eingetragen</span><span>🌴 = Urlaub</span>
-            <span style={{color:"#c0392b"}}>✗ = Tag vergeben</span><span>🔒 = Nur eigener</span>
-            <span style={{color:"#c8913a",fontWeight:600}}>Mo = Monatssoll</span>
-          </div>
-        </div>
-
-        {/* Monthly summary */}
-        <div style={S.card}>
-          <div style={S.cTitle}>Monatsübersicht – {today.toLocaleDateString("de-DE",{month:"long",year:"numeric"})}</div>
-          {einstellerList.map(e=>{
-            const mQ=getMonthlyQuota(e,members,vacations,curYear,curMonth);
-            const mC=countMistMonth(mistData,e.id,curYear,curMonth);
-            const bets=members.filter(m=>m.einstellerId===e.id);
-            return (
-              <div key={e.id} style={{marginBottom:14,paddingBottom:14,borderBottom:"1px solid #f0e8d8"}}>
-                <div style={{...S.row,justifyContent:"space-between",marginBottom:4}}>
+            {/* Stats */}
+            {(()=>{
+              const mQ=getMonthlyQuota(currentUser,members,vacations,viewYear,viewMonth);
+              const mC=countMistMonth(mistData,currentUser.id,viewYear,viewMonth);
+              return (
+                <div style={{...S.row,justifyContent:"space-between",background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
                   <div>
-                    <div style={{fontWeight:600,fontSize:13}}>{e.name} <span style={{fontSize:10,color:"#8b6040"}}>({e.horse})</span></div>
-                    <div style={{fontSize:10,color:"#aaa"}}>Pflicht: {mQ}× diesen Monat{(vacations[e.id]||[]).length>0?` · 🌴`:""}</div>
+                    <div style={{fontSize:12,color:"#8b6040"}}>Mein Monatssoll</div>
+                    <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:mC>=mQ?"#27ae60":"#c0392b",fontWeight:700}}>{mC}<span style={{fontSize:13,color:"#aaa"}}>/{mQ}×</span></div>
                   </div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontWeight:700,fontSize:20,color:mC>=mQ?"#27ae60":"#c0392b"}}>{mC}</div>
-                    <div style={{fontSize:9,color:"#aaa"}}>/{mQ}×</div>
-                  </div>
+                  <div style={{fontSize:24}}>{mC>=mQ?"✅":"⏳"}</div>
                 </div>
-                {bets.map(rb=>{
-                  const rbQ=getMonthlyQuota(rb,members,vacations,curYear,curMonth);
-                  const rbC=countMistMonth(mistData,rb.id,curYear,curMonth);
-                  return (
-                    <div key={rb.id} style={{...S.row,justifyContent:"space-between",paddingLeft:12,marginTop:4}}>
-                      <div style={{fontSize:11,color:"#8b6040"}}>↳ {rb.name} {(vacations[rb.id]||[]).length>0&&"🌴"} <span style={{fontSize:9}}>({rbQ}×)</span></div>
-                      <div style={{fontSize:12,fontWeight:700,color:rbC>=rbQ?"#27ae60":"#c0392b"}}>{rbC}/{rbQ}</div>
-                    </div>
-                  );
-                })}
+              );
+            })()}
+            {/* Calendar grid */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:6}}>
+              {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
+                <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700,paddingBottom:4}}>{d}</div>
+              ))}
+              {/* leading empty cells */}
+              {Array.from({length:(new Date(viewYear,viewMonth,1).getDay()||7)-1}).map((_,i)=><div key={"e"+i}/>)}
+              {daysInMonth().map(d=>{
+                const k         = dk(d);
+                const checked   = (mistData[k]||[]).includes(currentUser.id);
+                const isPast    = d < new Date(dk(today));
+                const isToday   = k===dk(today);
+                const onVac     = isOnVacationDay(currentUser.id,k,vacations);
+                const takenByOther = (mistData[k]||[]).some(id=>id!==currentUser.id);
+                const canClick  = !onVac && !takenByOther;
+                return (
+                  <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
+                    style={{
+                      aspectRatio:"1",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                      cursor:canClick?"pointer":"default",
+                      background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":isPast?"#f5f0e8":"#fff",
+                      border:isToday?"2px solid #c8913a":checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther?"2px solid #f5c0c0":"1px solid #e2d5c0",
+                      transition:"all .15s"
+                    }}>
+                    <div style={{fontSize:11,fontWeight:isToday?700:400,color:checked?"#fff":takenByOther?"#c0392b":onVac?"#16a085":"#2c2416"}}>{d.getDate()}</div>
+                    {onVac&&<div style={{fontSize:8}}>🌴</div>}
+                    {!onVac&&checked&&<div style={{fontSize:8,color:"#fff"}}>✓</div>}
+                    {!onVac&&!checked&&takenByOther&&<div style={{fontSize:8,color:"#c0392b"}}>✗</div>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa",marginTop:6}}>
+              <span>✓ = Eingetragen</span>
+              <span style={{color:"#c0392b"}}>✗ = Tag vergeben</span>
+              <span>🌴 = Urlaub</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── ADMIN: Wochen- oder Monatsansicht ── */}
+        {isAdmin&&(
+          <div style={S.card}>
+            {/* View toggle */}
+            <div style={{...S.row,justifyContent:"center",gap:6,marginBottom:14}}>
+              <button onClick={()=>setAdminView("week")} style={{...S.btn(adminView==="week"?"primary":"light"),padding:"6px 16px",fontSize:12}}>📅 Woche</button>
+              <button onClick={()=>setAdminView("month")} style={{...S.btn(adminView==="month"?"primary":"light"),padding:"6px 16px",fontSize:12}}>📆 Monat</button>
+            </div>
+
+            {adminView==="week"&&(<>
+              <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+                <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setWeekOffset(w=>w-1)}>‹</button>
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:13,color:"#3d2b1f"}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</div>
+                  {weekOffset===0&&<div style={{fontSize:10,color:"#c8913a",fontWeight:600}}>DIESE WOCHE</div>}
+                </div>
+                <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setWeekOffset(w=>w+1)}>›</button>
               </div>
-            );
-          })}
-        </div>
+              <div style={S.divider}/>
+              <div style={{display:"grid",gridTemplateColumns:"96px repeat(7,1fr)",gap:2,marginBottom:6}}>
+                <div/>
+                {weekDates.map(d=>(
+                  <div key={dk(d)} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:600,lineHeight:1.3}}>
+                    {d.toLocaleDateString("de-DE",{weekday:"short"})}<br/>{d.getDate()}
+                  </div>
+                ))}
+              </div>
+              {adminRows.map(({member:m,isChild})=>{
+                const mYear=weekDates[0].getFullYear(); const mMonth=weekDates[0].getMonth();
+                const monthQ=getMonthlyQuota(m,members,vacations,mYear,mMonth);
+                const monthC=countMistMonth(mistData,m.id,mYear,mMonth);
+                const ok=monthC>=monthQ;
+                const onVacWeek=getMemberWeekQuota(m,dk(weekDates[0]),members,vacations)===0;
+                const isMe=currentUser.id===m.id;
+                return (
+                  <div key={m.id} style={{marginBottom:4}}>
+                    <div style={{display:"grid",gridTemplateColumns:"96px repeat(7,1fr)",gap:2,alignItems:"center"}}>
+                      <div style={{paddingLeft:isChild?10:0}}>
+                        {isChild&&<div style={{fontSize:8,color:"#b89060",marginBottom:1}}>↳ Beteil.</div>}
+                        <div style={{fontSize:11,fontWeight:isMe?700:500,color:isMe?"#c8913a":"#2c2416",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name.split(" ")[0]}</div>
+                        {onVacWeek?<div style={{fontSize:9,color:"#16a085",fontWeight:600}}>🌴 Urlaub</div>
+                          :<div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{monthC}/{monthQ}Mo</div>}
+                      </div>
+                      {weekDates.map(d=>{
+                        const k=dk(d); const checked=(mistData[k]||[]).includes(m.id);
+                        const isPast=d<new Date(dk(today)); const onVac=isOnVacationDay(m.id,k,vacations);
+                        const takenByOther=(mistData[k]||[]).some(id=>id!==m.id);
+                        return (
+                          <div key={k} onClick={()=>toggleMist(k,m.id)}
+                            style={{height:30,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
+                              background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":isPast?"#f5f0e8":"#faf6f0",
+                              border:checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther?"2px solid #f5c0c0":isMe&&!isPast?"2px solid #c8913a55":"2px solid #e2d5c0",
+                              transition:"all .15s"}}>
+                            {onVac&&<span style={{fontSize:10}}>🌴</span>}
+                            {!onVac&&checked&&<span style={{color:"#fff",fontSize:11}}>✓</span>}
+                            {!onVac&&!checked&&takenByOther&&<span style={{fontSize:9,color:"#c0392b"}}>✗</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa"}}>
+                <span>✓ = Eingetragen</span><span>🌴 = Urlaub</span>
+                <span style={{color:"#c0392b"}}>✗ = Tag vergeben</span>
+                <span style={{color:"#c8913a",fontWeight:600}}>Mo = Monatssoll</span>
+              </div>
+            </>)}
+
+            {adminView==="month"&&(<>
+              <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+                <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o-1)}>‹</button>
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#3d2b1f"}}>{monthLabel}</div>
+                  {monthOffset===0&&<div style={{fontSize:10,color:"#c8913a",fontWeight:600}}>DIESER MONAT</div>}
+                </div>
+                <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o+1)}>›</button>
+              </div>
+              {einstellerList.map(e=>{
+                const mQ=getMonthlyQuota(e,members,vacations,viewYear,viewMonth);
+                const mC=countMistMonth(mistData,e.id,viewYear,viewMonth);
+                const bets=members.filter(m=>m.einstellerId===e.id);
+                return (
+                  <div key={e.id} style={{marginBottom:14,paddingBottom:14,borderBottom:"1px solid #f0e8d8"}}>
+                    <div style={{...S.row,justifyContent:"space-between",marginBottom:4}}>
+                      <div>
+                        <div style={{fontWeight:600,fontSize:13}}>{e.name} <span style={{fontSize:10,color:"#8b6040"}}>({e.horse})</span></div>
+                        <div style={{fontSize:10,color:"#aaa"}}>Pflicht: {mQ}×{(vacations[e.id]||[]).length>0?" · 🌴":""}</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontWeight:700,fontSize:20,color:mC>=mQ?"#27ae60":"#c0392b"}}>{mC}</div>
+                        <div style={{fontSize:9,color:"#aaa"}}>/{mQ}×</div>
+                      </div>
+                    </div>
+                    {bets.map(rb=>{
+                      const rbQ=getMonthlyQuota(rb,members,vacations,viewYear,viewMonth);
+                      const rbC=countMistMonth(mistData,rb.id,viewYear,viewMonth);
+                      return (
+                        <div key={rb.id} style={{...S.row,justifyContent:"space-between",paddingLeft:12,marginTop:4}}>
+                          <div style={{fontSize:11,color:"#8b6040"}}>↳ {rb.name} {(vacations[rb.id]||[]).length>0&&"🌴"} <span style={{fontSize:9}}>({rbQ}×)</span></div>
+                          <div style={{fontSize:12,fontWeight:700,color:rbC>=rbQ?"#27ae60":"#c0392b"}}>{rbC}/{rbQ}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </>)}
+          </div>
+        )}
 
         {showAddVacation&&(
           <div style={S.modal}><div style={S.mBox}>
