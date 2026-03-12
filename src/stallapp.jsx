@@ -44,45 +44,56 @@ const fmt   = d => d.toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",m
 const fmtD  = d => d.toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"});
 const fmtSh = d => d.toLocaleDateString("de-DE",{day:"2-digit",month:"short"});
 
+// A week belongs to the month that contains its Thursday (ISO standard).
+// Returns Monday-keys of all weeks belonging to the given month.
 const getWeeksInMonth = (year, month) => {
-  const weeks=[]; const d=new Date(year,month,1);
-  while(d.getMonth()===month){
-    const day=d.getDay()||7;
-    const mon=new Date(d); mon.setDate(d.getDate()-day+1);
-    const monKey=dk(mon);
-    if(!weeks.find(w=>w===monKey)) weeks.push(monKey);
-    d.setDate(d.getDate()+7);
+  const weeks = [];
+  // Iterate every day of the month, find its week-Monday, check if Thursday of that week is in this month
+  const d = new Date(year, month, 1);
+  while(d.getMonth() === month) {
+    const dow = d.getDay() || 7; // 1=Mon … 7=Sun
+    const mon = new Date(d); mon.setDate(d.getDate() - dow + 1);
+    const thu = new Date(mon); thu.setDate(mon.getDate() + 3); // Thursday
+    const monKey = dk(mon);
+    if(thu.getFullYear()===year && thu.getMonth()===month && !weeks.includes(monKey)) {
+      weeks.push(monKey);
+    }
+    d.setDate(d.getDate() + 1);
   }
   return weeks;
 };
 
 // ── Quota helpers ──────────────────────────────────────────────────────────
 const getBaseGroupQuota = (einsteller, allMembers) => {
-  const beteiligungen=allMembers.filter(m=>m.einstellerId===einsteller.id);
-  return Math.max(1, Math.round(2/(1+beteiligungen.length)));
+  const beteiligungen = allMembers.filter(m=>m.einstellerId===einsteller.id);
+  return Math.max(1, Math.round(2 / (1 + beteiligungen.length)));
 };
 const getMemberWeekQuota = (member, weekMon, allMembers, vacations) => {
-  const weekEnd=new Date(weekMon); weekEnd.setDate(new Date(weekMon).getDate()+6);
-  const weekEndKey=dk(weekEnd);
-  const isOnVacation=(vacations[member.id]||[]).some(v=>v.from<=weekEndKey&&v.to>=weekMon);
+  const weekEnd = new Date(weekMon); weekEnd.setDate(new Date(weekMon).getDate() + 6);
+  const weekEndKey = dk(weekEnd);
+  const isOnVacation = (vacations[member.id]||[]).some(v=>v.from<=weekEndKey && v.to>=weekMon);
   if(isOnVacation) return 0;
-  const root=member.type==="reitbeteiligung"?allMembers.find(m=>m.id===member.einstellerId):member;
-  if(!root) return getBaseGroupQuota(member,allMembers);
-  return getBaseGroupQuota(root,allMembers);
+  const root = member.type==="reitbeteiligung" ? allMembers.find(m=>m.id===member.einstellerId) : member;
+  if(!root) return getBaseGroupQuota(member, allMembers);
+  return getBaseGroupQuota(root, allMembers);
 };
 const countMistMonth = (mistData, memberId, year, month) => {
-  let count=0;
-  getWeeksInMonth(year,month).forEach(monKey=>{
-    for(let i=0;i<7;i++){
-      const d=new Date(monKey); d.setDate(d.getDate()+i);
-      if(d.getMonth()===month) count+=((mistData[dk(d)]||[]).includes(memberId)?1:0);
+  // Count actual mist entries on days that belong to weeks of this month (Thu-rule)
+  // but only count days within those weeks (all 7 days, regardless of month boundary)
+  let count = 0;
+  getWeeksInMonth(year, month).forEach(monKey => {
+    for(let i=0; i<7; i++){
+      const d = new Date(monKey); d.setDate(d.getDate() + i);
+      count += (mistData[dk(d)]||[]).includes(memberId) ? 1 : 0;
     }
   });
   return count;
 };
 const getMonthlyQuota = (member, allMembers, vacations, year, month) => {
-  let total=0;
-  getWeeksInMonth(year,month).forEach(monKey=>{ total+=getMemberWeekQuota(member,monKey,allMembers,vacations); });
+  let total = 0;
+  getWeeksInMonth(year, month).forEach(monKey => {
+    total += getMemberWeekQuota(member, monKey, allMembers, vacations);
+  });
   return total;
 };
 const isOnVacationDay = (memberId, dayKey, vacations) =>
