@@ -132,9 +132,9 @@ const getMonthlyQuota = (member, allMembers, vacations, year, month) => {
 const isOnVacationDay = (memberId, dayKey, vacations) =>
   (vacations[memberId]||[]).some(v=>v.from<=dayKey&&v.to>=dayKey);
 const getVacCoverDay = (dayKey, vacations, allMembers, excludeId) => {
-  // Returns 'must' | 'soft' | null — whether any Einsteller is on vacation on this day
+  // Returns 'must' | 'soft' | null — whether any Einsteller/Admin is on vacation on this day
   let must = false, soft = false;
-  allMembers.filter(m=>m.type==="einsteller"&&m.id!==excludeId).forEach(m=>{
+  allMembers.filter(m=>(m.type==="einsteller"||m.type==="admin")&&m.id!==excludeId).forEach(m=>{
     const vac = (vacations[m.id]||[]).find(v=>v.from<=dayKey&&v.to>=dayKey);
     if(vac) { if(vac.mustCover) must=true; else soft=true; }
   });
@@ -188,19 +188,22 @@ const Ic = ({ n, s=20 }) => {
 // ══════════════════════════════════════════════════════════════════════════
 
 function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations, finMonths, finAccounts, selDay, setSelDay, upcomingEvents, unpaid, mistWarnings, getVacationLabel, calcTotal, getFinMonth }) {
-  const curYear  = today.getFullYear();
-  const curMonth = today.getMonth();
+  const [monthOffset, setMonthOffset] = useState(0);
+  const viewDate  = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+  const viewYear  = viewDate.getFullYear();
+  const viewMonth = viewDate.getMonth();
+  const isThisMonth = monthOffset === 0;
+
   const isE = currentUser.type==="einsteller";
-  const mQ  = isE ? getMonthlyQuota(currentUser,members,vacations,curYear,curMonth) : 0;
-  const mC  = isE ? countMistMonth(mistData,currentUser.id,curYear,curMonth) : 0;
+  const mQ  = isE ? getMonthlyQuota(currentUser,members,vacations,viewYear,viewMonth) : 0;
+  const mC  = isE ? countMistMonth(mistData,currentUser.id,viewYear,viewMonth) : 0;
   const myVacLabel = getVacationLabel(currentUser.id);
 
-  const calYear  = today.getFullYear();
-  const calMonth = today.getMonth();
-  const calDays  = [];
-  const cd = new Date(calYear, calMonth, 1);
-  while(cd.getMonth()===calMonth){ calDays.push(new Date(cd)); cd.setDate(cd.getDate()+1); }
-  const leadingBlanks = (new Date(calYear,calMonth,1).getDay()||7)-1;
+  const calDays = [];
+  const cd = new Date(viewYear, viewMonth, 1);
+  while(cd.getMonth()===viewMonth){ calDays.push(new Date(cd)); cd.setDate(cd.getDate()+1); }
+  const leadingBlanks = (new Date(viewYear,viewMonth,1).getDay()||7)-1;
+  const monthLabel = viewDate.toLocaleDateString("de-DE",{month:"long",year:"numeric"});
 
   const getDayInfo = (day) => {
     const k = dkl(day);
@@ -248,12 +251,23 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
           </div></div>
         </div>
       )}
+
+      {/* Month navigator */}
+      <div style={{...S.row,justifyContent:"space-between",alignItems:"center",padding:"8px 16px 0"}}>
+        <button onClick={()=>setMonthOffset(o=>o-1)} style={{background:"#f0e8d8",border:"none",borderRadius:20,width:32,height:32,cursor:"pointer",fontSize:16,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,color:"#3d2b1f"}}>{monthLabel}</div>
+          {!isThisMonth&&<div style={{fontSize:10,color:"#c8913a",cursor:"pointer",marginTop:1}} onClick={()=>setMonthOffset(0)}>Heute</div>}
+        </div>
+        <button onClick={()=>setMonthOffset(o=>o+1)} style={{background:"#f0e8d8",border:"none",borderRadius:20,width:32,height:32,cursor:"pointer",fontSize:16,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+      </div>
+
       {isAdmin&&(
         <div style={S.card}>
           <div style={S.cTitle}>💰 Zahlungsübersicht</div>
           {members.filter(m=>m.type==="einsteller").map(m=>{
-            const fm=getFinMonth(m.id,curYear,curMonth);
-            const total=calcTotal(m.id,curYear,curMonth);
+            const fm=getFinMonth(m.id,viewYear,viewMonth);
+            const total=calcTotal(m.id,viewYear,viewMonth);
             const paid=fm.payment!==null&&fm.payment!==undefined;
             return (
               <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
@@ -280,13 +294,13 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             {mC>=mQ?<span style={{color:"#27ae60",fontWeight:700,fontSize:12}}>✓ Erledigt!</span>:<span style={{color:"#c0392b",fontWeight:700,fontSize:12}}>Noch offen</span>}
           </div>
           {currentUser.type!=="reitbeteiligung"&&(()=>{
-            const hFm    = getFinMonth(currentUser.id, curYear, curMonth);
-            const hTotal = calcTotal(currentUser.id, curYear, curMonth);
+            const hFm    = getFinMonth(currentUser.id, viewYear, viewMonth);
+            const hTotal = calcTotal(currentUser.id, viewYear, viewMonth);
             const hPaid  = hFm.payment!==null&&hFm.payment!==undefined;
             return (
               <div style={{...S.row,justifyContent:"space-between",marginTop:4,paddingTop:10,borderTop:"1px solid #f0e8d8"}}>
                 <div>
-                  <div style={{fontSize:13}}>💰 Stallgebühr {today.toLocaleDateString("de-DE",{month:"long"})}</div>
+                  <div style={{fontSize:13}}>💰 Stallgebühr {viewDate.toLocaleDateString("de-DE",{month:"long"})}</div>
                   <div style={{fontSize:11,color:"#aaa",marginTop:1}}>{hTotal.toFixed(2)}€ fällig</div>
                 </div>
                 {hPaid
@@ -300,7 +314,6 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
 
       {/* Mini Month Calendar */}
       <div style={S.card}>
-        <div style={S.cTitle}>📅 {today.toLocaleDateString("de-DE",{month:"long",year:"numeric"})}</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>
           {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
             <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700}}>{d}</div>
