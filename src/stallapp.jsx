@@ -141,6 +141,9 @@ const getVacCoverDay = (dayKey, vacations, allMembers, excludeId) => {
   return must?"must":soft?"soft":null;
 };
 
+const EVENT_TYPES  = ["Tierarzt","Hufschmied","Impfen","Sonstiges"];
+const EVENT_COLORS = { Tierarzt:"#c0392b", Hufschmied:"#8B6914", Impfen:"#27ae60", Sonstiges:"#7f8c8d" };
+
 const S = {
   root:    { fontFamily:"'DM Sans',sans-serif", background:"#f5f0e8", minHeight:"100vh", color:"#2c2416", maxWidth:430, margin:"0 auto", paddingBottom:90 },
   header:  { background:"linear-gradient(160deg,#3d2b1f 0%,#6b4c2a 100%)", padding:"20px 20px 14px", position:"sticky", top:0, zIndex:100 },
@@ -210,12 +213,19 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
     const myMist   = (mistData[k]||[]).includes(currentUser.id);
     const myVac    = isOnVacationDay(currentUser.id, k, vacations);
     const dayEvts  = events.filter(e=>e.date===k);
-    // Admin/other Einsteller vacations visible for Einsteller
-    const adminVacs = !isAdmin ? members
-      .filter(m=>(m.type==="admin"||m.type==="einsteller")&&m.id!==currentUser.id)
-      .flatMap(m=>(vacations[m.id]||[]).filter(v=>v.from<=k&&v.to>=k).map(v=>({...v, memberName:m.name.split(" ")[0]})))
-      : [];
-    return { k, myMist, myVac, dayEvts, adminVacs };
+    // Whose vacations to show:
+    // Admin: everyone | Einsteller: admin + own RBs | Reitbeteiligung: admin + own Einsteller
+    const otherVacs = members
+      .filter(m => {
+        if(m.id===currentUser.id) return false;
+        if(isAdmin) return true;
+        if(m.type==="admin") return true;
+        if(currentUser.type==="einsteller" && m.einstellerId===currentUser.id) return true;
+        if(currentUser.type==="reitbeteiligung" && m.id===currentUser.einstellerId) return true;
+        return false;
+      })
+      .flatMap(m=>(vacations[m.id]||[]).filter(v=>v.from<=k&&v.to>=k).map(v=>({...v, memberName:m.name.split(" ")[0]})));
+    return { k, myMist, myVac, dayEvts, adminVacs: otherVacs };
   };
   const getDots = (info, isSelected) => {
     const dots = [];
@@ -356,7 +366,27 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
           <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c8913a",display:"inline-block"}}/> Mein Mist</span>
           <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#16a085",display:"inline-block"}}/> Urlaub</span>
           <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c0392b",display:"inline-block"}}/> Termin</span>
-          {!isAdmin&&<span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#ccc",display:"inline-block"}}/> Anderer Urlaub</span>}
+          {(()=>{
+            const othersWithVac = members
+              .filter(m => {
+                if(m.id===currentUser.id) return false;
+                if(isAdmin) return true;
+                if(m.type==="admin") return true;
+                if(currentUser.type==="einsteller" && m.einstellerId===currentUser.id) return true;
+                if(currentUser.type==="reitbeteiligung" && m.id===currentUser.einstellerId) return true;
+                return false;
+              })
+              .filter(m=>(vacations[m.id]||[]).some(v=>{
+                const vFrom=new Date(v.from+"T00:00:00"); const vTo=new Date(v.to+"T00:00:00");
+                const mStart=new Date(viewYear,viewMonth,1); const mEnd=new Date(viewYear,viewMonth+1,0);
+                return vFrom<=mEnd && vTo>=mStart;
+              }));
+            if(othersWithVac.length===0) return null;
+            return <span style={{display:"flex",alignItems:"center",gap:3}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:"#ccc",display:"inline-block"}}/>
+              {" Urlaub: "}{othersWithVac.map(m=>m.name.split(" ")[0]).join(", ")}
+            </span>;
+          })()}
         </div>
         {selInfo&&(
           <div style={{marginTop:12,background:"#faf6f0",borderRadius:10,padding:"10px 14px",border:"1px solid #e2d5c0"}}>
@@ -1652,8 +1682,7 @@ export default function StallApp() {
     showToast("✅ Urlaub aktualisiert!");
   };
 
-  const EVENT_TYPES  = ["Tierarzt","Hufschmied","Impfen","Sonstiges"];
-  const EVENT_COLORS = { Tierarzt:"#c0392b", Hufschmied:"#8B6914", Impfen:"#27ae60", Sonstiges:"#7f8c8d" };
+
   const addEvent = async () => {
     if(!newEvent.date) return;
     const row={...newEvent,id:Date.now(),color:EVENT_COLORS[newEvent.type]||"#7f8c8d",created_by:currentUser.name};
