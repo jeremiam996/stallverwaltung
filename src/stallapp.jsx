@@ -985,12 +985,11 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
     if(isNaN(pay)) return;
     const total = calcTotal(memberId, viewYear, viewMonth);
     let diff = pay - total;
-    if(diff>5) diff=5; if(diff<-5) diff=-5;
     await saveFinMonth(memberId, viewYear, viewMonth, {payment:pay});
     let nm=viewMonth+1, ny=viewYear;
     if(nm>11){nm=0;ny++;}
-    const nextFm = getFinMonth(memberId,ny,nm);
-    await saveFinMonth(memberId, ny, nm, {carryover: Number((nextFm.carryover||0) + diff)});
+    // Replace carryover (don't accumulate — corrections would double-count)
+    await saveFinMonth(memberId, ny, nm, {carryover: Number(diff.toFixed(2))});
     if(directAmount===undefined) setEditPay(p=>({...p,[memberId]:undefined}));
     showToast(diff!==0?`💾 Zahlung gespeichert · Übertrag: ${diff>0?"+":""}${diff.toFixed(2)}€`:"💾 Zahlung gespeichert!");
   };
