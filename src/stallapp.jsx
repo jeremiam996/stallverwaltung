@@ -1453,27 +1453,30 @@ export default function StallApp() {
   const fmKey       = (memberId,year,month) => memberId+"_"+year+"-"+String(month+1).padStart(2,"0");
   const getFinMonth = (memberId,year,month) => finMonths[fmKey(memberId,year,month)]||{extras:[],payment:null,carryover:0,notes:""};
   const getBaseFee  = (memberId) => finAccounts[memberId]?.baseFee||0;
-  const calcCarryover = (memberId, year, month) => {
-    // Calculate previous month's underpayment/overpayment live, ignoring stored carryover
-    let pm = month - 1, py = year;
-    if(pm < 0) { pm = 11; py--; }
-    const prevFm = getFinMonth(memberId, py, pm);
-    if(prevFm.payment === null || prevFm.payment === undefined) return 0;
-    const prevBase = getBaseFee(memberId);
-    const prevExtras = (prevFm.extras||[]).reduce((a,e)=>a+Number(e.amount),0);
-    const prevCarry = calcCarryoverRaw(memberId, py, pm); // recursive one level only
-    const prevTotal = prevBase + prevExtras + prevCarry;
-    return Number((prevTotal - prevFm.payment).toFixed(2)); // positive = owes more, negative = credit
-  };
   const calcCarryoverRaw = (memberId, year, month) => {
-    let pm = month - 1, py = year;
-    if(pm < 0) { pm = 11; py--; }
-    const prevFm = getFinMonth(memberId, py, pm);
-    if(prevFm.payment === null || prevFm.payment === undefined) return 0;
-    const prevBase = getBaseFee(memberId);
-    const prevExtras = (prevFm.extras||[]).reduce((a,e)=>a+Number(e.amount),0);
-    const prevTotal = prevBase + prevExtras;
-    return Number((prevTotal - prevFm.payment).toFixed(2));
+    try {
+      let pm = month - 1, py = year;
+      if(pm < 0) { pm = 11; py--; }
+      const prevFm = getFinMonth(memberId, py, pm);
+      if(prevFm.payment === null || prevFm.payment === undefined) return 0;
+      const prevBase = getBaseFee(memberId);
+      const prevExtras = (prevFm.extras||[]).reduce((a,e)=>a+Number(e.amount||0),0);
+      const prevTotal = prevBase + prevExtras;
+      return Number((prevTotal - Number(prevFm.payment)).toFixed(2));
+    } catch(e) { return 0; }
+  };
+  const calcCarryover = (memberId, year, month) => {
+    try {
+      let pm = month - 1, py = year;
+      if(pm < 0) { pm = 11; py--; }
+      const prevFm = getFinMonth(memberId, py, pm);
+      if(prevFm.payment === null || prevFm.payment === undefined) return 0;
+      const prevBase = getBaseFee(memberId);
+      const prevExtras = (prevFm.extras||[]).reduce((a,e)=>a+Number(e.amount||0),0);
+      const prevCarry = calcCarryoverRaw(memberId, py, pm);
+      const prevTotal = prevBase + prevExtras + prevCarry;
+      return Number((prevTotal - Number(prevFm.payment)).toFixed(2));
+    } catch(e) { return 0; }
   };
   const calcTotal   = (memberId,year,month) => {
     const fm=getFinMonth(memberId,year,month); const base=getBaseFee(memberId);
