@@ -941,7 +941,7 @@ function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacation
   );
 }
 
-function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts, finViewMonth, finViewYear, setFinViewMonth, setFinViewYear, editFee, setEditFee, editPay, setEditPay, addExtra, setAddExtra, extraForm, setExtraForm, saveFinMonth, saveBaseFee, calcTotal, getFinMonth, getBaseFee, showToast }) {
+function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts, finViewMonth, finViewYear, setFinViewMonth, setFinViewYear, editFee, setEditFee, editPay, setEditPay, addExtra, setAddExtra, extraForm, setExtraForm, saveFinMonth, saveBaseFee, calcTotal, calcCarryover, getFinMonth, getBaseFee, showToast }) {
   const einsteller = members.filter(m=>m.type==="einsteller");
   const viewMonth  = finViewMonth;
   const viewYear   = finViewYear;
@@ -1563,7 +1563,7 @@ export default function StallApp() {
 
   // Shared props bundles
   const commonProps = { currentUser, isAdmin, members, vacations, einstellerList, showToast };
-  const finHelpers  = { calcTotal, getFinMonth, getBaseFee, saveFinMonth, saveBaseFee };
+  const finHelpers  = { calcTotal, calcCarryover, getFinMonth, getBaseFee, saveFinMonth, saveBaseFee };
 
   return (
     <div style={S.root}>
