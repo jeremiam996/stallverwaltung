@@ -227,7 +227,7 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
           <div style={S.cTitle}>Mein Überblick</div>
           <div style={{...S.row,justifyContent:"space-between",marginBottom:8}}>
             <div>
-              <div style={{fontSize:13}}>🧹 Mistdienst: <b style={{color:mC>=mQ?"#27ae60":"#c0392b"}}>{mC}/{mQ}×</b></div>
+              <div style={{fontSize:13}}>🧹 Mistdienst: <b style={{color:mC>=mQ?"#27ae60":"#c0392b"}}>{mC}/{mQ}×{mC>mQ?" 🌟":""}</b></div>
               <div style={{fontSize:11,color:"#aaa",marginTop:2}}>Aufgeteilt mit {members.filter(m=>m.einstellerId===currentUser.id).length} Reitbet.</div>
             </div>
             {mC>=mQ?<span style={{color:"#27ae60",fontWeight:700,fontSize:12}}>✓ Erledigt!</span>:<span style={{color:"#c0392b",fontWeight:700,fontSize:12}}>Noch offen</span>}
@@ -461,7 +461,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               <div style={{...S.row,justifyContent:"space-between",background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
                 <div>
                   <div style={{fontSize:12,color:"#8b6040"}}>Mein Monatssoll</div>
-                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:mC>=mQ?"#27ae60":"#c0392b",fontWeight:700}}>{mC}<span style={{fontSize:13,color:"#aaa"}}>/{mQ}×</span></div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:mC>=mQ?"#27ae60":"#c0392b",fontWeight:700}}>{mC}<span style={{fontSize:13,color:"#aaa"}}>/{mQ}×</span>{mC>mQ&&<span style={{fontSize:12,color:"#c8913a",marginLeft:4}}>🌟</span>}</div>
                 </div>
                 <div style={{fontSize:24}}>{mC>=mQ?"✅":"⏳"}</div>
               </div>
@@ -545,7 +545,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                     <div style={{paddingLeft:isChild?10:0}}>
                       {isChild&&<div style={{fontSize:8,color:"#b89060",marginBottom:1}}>↳ Beteil.</div>}
                       <div style={{fontSize:11,fontWeight:isMe?700:500,color:isMe?"#c8913a":"#2c2416",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name.split(" ")[0]}</div>
-                      {onVacWeek?<div style={{fontSize:9,color:"#16a085",fontWeight:600}}>🌴 Urlaub</div>
+                      {m.type==="admin"?null:onVacWeek?<div style={{fontSize:9,color:"#16a085",fontWeight:600}}>🌴 Urlaub</div>
                         :<div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{monthC}/{monthQ}Mo</div>}
                     </div>
                     {weekDates.map(d=>{
@@ -616,7 +616,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
             </div>
             <div style={{borderTop:"1px solid #f0e8d8",paddingTop:12}}>
               <div style={{fontWeight:700,fontSize:12,color:"#3d2b1f",marginBottom:8}}>Offene Dienste {monthLabel}</div>
-              {[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].map(m=>{
+              {[...einstellerList.filter(m=>m.type!=="admin"),...members.filter(m=>m.type==="reitbeteiligung")].map(m=>{
                 const mQ=getMonthlyQuota(m,members,vacations,viewYear,viewMonth);
                 const mC=countMistMonth(mistData,m.id,viewYear,viewMonth);
                 const isChild=m.type==="reitbeteiligung";
@@ -627,7 +627,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                       <span style={{fontSize:12,fontWeight:mC>=mQ?400:600,color:mC>=mQ?"#aaa":"#2c2416"}}>{m.name.split(" ")[0]} {m.name.split(" ")[1]?.charAt(0)}.</span>
                       {(vacations[m.id]||[]).length>0&&<span style={{fontSize:10}}> 🌴</span>}
                     </div>
-                    <span style={{fontSize:11,fontWeight:700,color:mC>=mQ?"#27ae60":"#c0392b",background:mC>=mQ?"#d5f5e3":"#fdecea",padding:"3px 8px",borderRadius:20}}>{mC>=mQ?"✓ Erledigt":`${mC}/${mQ}×`}</span>
+                    <span style={{fontSize:11,fontWeight:700,color:mC>=mQ?"#27ae60":"#c0392b",background:mC>=mQ?"#d5f5e3":"#fdecea",padding:"3px 8px",borderRadius:20}}>{`${mC}/${mQ}×`}{mC>=mQ&&" ✓"}</span>
                   </div>
                 );
               })}
@@ -727,7 +727,9 @@ function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacation
             </div>
           </div>
           {!pinMode?(
-            <button style={{...S.btn("light"),padding:"8px 14px",fontSize:12}} onClick={()=>setPinMode(true)}>🔑 PIN ändern</button>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button style={{...S.btn("light"),padding:"8px 14px",fontSize:12}} onClick={()=>setPinMode(true)}>🔑 PIN ändern</button>
+            </div>
           ):(
             <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a",marginTop:8}}>
               <div style={{fontSize:12,fontWeight:700,color:"#c8913a",marginBottom:10}}>🔑 PIN ändern</div>
@@ -748,6 +750,26 @@ function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacation
                   setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");
                   showToast("✅ PIN erfolgreich geändert!");
                 }}>💾 Speichern</button>
+              </div>
+            </div>
+          )}
+          {/* Mistdienst-Aufteilung für Einsteller mit Reitbeteiligung */}
+          {currentUser.type==="einsteller"&&members.filter(rb=>rb.einstellerId===currentUser.id).length>0&&(
+            <div style={{marginTop:12,background:"#faf6f0",borderRadius:10,padding:12,border:"1px solid #e2d5c0"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f",marginBottom:4}}>🧹 Mistdienst-Aufteilung</div>
+              <div style={{fontSize:11,color:"#8b6040",marginBottom:10}}>
+                Dein Anteil: <b>{currentUser.mistShare??50}%</b> · Rest auf {members.filter(rb=>rb.einstellerId===currentUser.id).length} Reitbet. aufgeteilt
+              </div>
+              <div style={{...S.row,gap:6}}>
+                {[25,50,75,100].map(v=>(
+                  <button key={v}
+                    onClick={async()=>{ await saveMemberEdit(currentUser.id,{...currentUser,mistShare:v,einstellerId:currentUser.einstellerId||""}); showToast("✅ Aufteilung gespeichert!"); }}
+                    style={{flex:1,padding:"7px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
+                      background:(currentUser.mistShare??50)===v?"#c8913a":"#f0e6d3",
+                      color:(currentUser.mistShare??50)===v?"#fff":"#3d2b1f",transition:"all .15s"}}>
+                    {v}%
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -1193,7 +1215,8 @@ export default function StallApp() {
     const channel = sb.channel("stallbuch-changes")
       .on("postgres_changes",{event:"*",schema:"public",table:"mist_data"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"members"},()=>loadAll())
-      .on("postgres_changes",{event:"*",schema:"public",table:"events"},()=>loadAll())
+      // events: optimistic only (realtime would overwrite local deletes)
+      // .on("postgres_changes",{event:"*",schema:"public",table:"events"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"vacations"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_accounts"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_months"},()=>loadAll())
@@ -1285,7 +1308,7 @@ export default function StallApp() {
   const einstellerList = members.filter(m=>m.type==="einsteller"||m.type==="admin");
   const upcomingEvents = [...events].sort((a,b)=>a.date.localeCompare(b.date)).filter(e=>e.date>=dk(today)).slice(0,5);
   const unpaid         = members.filter(m=>m.type==="einsteller"&&(()=>{ const fm=finMonths[m.id+"_"+curYear+"-"+String(curMonth+1).padStart(2,"0")]; return !fm||fm.payment===null||fm.payment===undefined; })());
-  const mistWarnings   = einstellerList.filter(m=>{ const mQ=getMonthlyQuota(m,members,vacations,curYear,curMonth); return countMistMonth(mistData,m.id,curYear,curMonth)<mQ; });
+  const mistWarnings   = einstellerList.filter(m=>{ if(m.type==="admin") return false; const mQ=getMonthlyQuota(m,members,vacations,curYear,curMonth); return countMistMonth(mistData,m.id,curYear,curMonth)<mQ; });
   const getVacationLabel = memberId => {
     const vacs=vacations[memberId]||[]; const now=dk(today);
     const active=vacs.find(v=>v.from<=now&&v.to>=now);
@@ -1305,7 +1328,7 @@ export default function StallApp() {
   const saveFinMonth = async (memberId,year,month,data) => {
     const key=fmKey(memberId,year,month); const mon=year+"-"+String(month+1).padStart(2,"0");
     const existing=finMonths[key];
-    const row={member_id:memberId,month:mon,extras:data.extras??existing?.extras??[],payment:data.payment??existing?.payment??null,carryover:data.carryover??existing?.carryover??0,notes:data.notes??existing?.notes??""};
+    const row={member_id:memberId,month:mon,extras:"extras" in data?data.extras:(existing?.extras??[]),payment:"payment" in data?data.payment:(existing?.payment??null),carryover:"carryover" in data?data.carryover:(existing?.carryover??0),notes:"notes" in data?data.notes:(existing?.notes??"")};
     setFinMonths(prev=>({...prev,[key]:{...existing,...data}}));
     if(existing?.id) await sb.from("finance_months").update(row).eq("id",existing.id);
     else { const newRow={...row,id:Date.now()}; setFinMonths(prev=>({...prev,[key]:{...newRow}})); await sb.from("finance_months").insert(newRow); }
