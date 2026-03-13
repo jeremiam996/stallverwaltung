@@ -1051,10 +1051,16 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
         </div>
         <div style={S.card}>
           <div style={{...S.row,justifyContent:"space-between",marginBottom:10}}>
-            <div style={S.cTitle}>Zusatzdienste</div>
+            <div style={S.cTitle}>Abrechnung</div>
             <button style={{...S.btn("primary"),padding:"7px 12px",fontSize:12}} onClick={()=>{setAddExtra(m.id);resetExtraForm();}}>+ Hinzufügen</button>
           </div>
-          {extras.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Keine Zusätze diesen Monat</div>}
+          {/* Grundgebühr */}
+          <div style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
+            <div style={{fontSize:13,color:"#3d2b1f"}}>Grundgebühr</div>
+            <span style={{fontWeight:600,fontSize:13}}>{base.toFixed(2)}€</span>
+          </div>
+          {/* Zusätze */}
+          {extras.length===0&&<div style={{fontSize:12,color:"#aaa",padding:"6px 0"}}>Keine Zusätze diesen Monat</div>}
           {extras.map(e=>(
             <div key={e.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
               <div>
@@ -1067,10 +1073,13 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
               </div>
             </div>
           ))}
+          {/* Übertrag: carry>0 = Schulden (rot, +Aufschlag), carry<0 = Guthaben (grün, -Abzug) */}
           {carry!==0&&(
-            <div style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderTop:"1px solid #f0e8d8",marginTop:4}}>
+            <div style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8",marginTop:2}}>
               <div style={{fontSize:12,color:"#8b6040"}}>Übertrag Vormonat</div>
-              <span style={{fontWeight:700,fontSize:13,color:carry>0?"#c0392b":"#27ae60"}}>{carry<0?"+":"-"}{Math.abs(carry).toFixed(2)}€</span>
+              <span style={{fontWeight:700,fontSize:13,color:carry>0?"#c0392b":"#27ae60"}}>
+                {carry>0?"+":"-"}{Math.abs(carry).toFixed(2)}€
+              </span>
             </div>
           )}
           <div style={{...S.row,justifyContent:"space-between",padding:"10px 0 0",borderTop:"2px solid #e2d5c0",marginTop:6}}>
