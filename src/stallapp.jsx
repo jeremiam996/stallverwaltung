@@ -1020,7 +1020,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
     const carry = Number(fm.carryover||0);
     const total = calcTotal(m.id, viewYear, viewMonth);
     const paid  = fm.payment!==null&&fm.payment!==undefined;
-    const diff  = paid ? Math.min(5,Math.max(-5, fm.payment - total)) : null;
+    const diff  = paid ? Number((fm.payment - total).toFixed(2)) : null;
     return (
       <div>
         <div style={{...S.row,justifyContent:"space-between",margin:"14px 16px 0"}}>
@@ -1133,7 +1133,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
         const fm=getFinMonth(m.id,viewYear,viewMonth); const base=getBaseFee(m.id);
         const extras=fm.extras||[]; const carry=Number(fm.carryover||0);
         const total=calcTotal(m.id,viewYear,viewMonth); const paid=fm.payment!==null&&fm.payment!==undefined;
-        const diff=paid?Math.min(5,Math.max(-5,fm.payment-total)):null;
+        const diff=paid?Number((fm.payment-total).toFixed(2)):null;
         const editingFee=editFee[m.id]!==undefined; const editingPay=editPay[m.id]!==undefined;
         return (
           <div key={m.id} style={S.card}>
