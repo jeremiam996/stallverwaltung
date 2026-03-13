@@ -421,7 +421,92 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
   );
 }
 
-function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einstellerList, weekDates, weekOffset, setWeekOffset, toggleMist, isMistLocked }) {
+// ── Mist Split Widget ────────────────────────────────────────────────────────
+function MistSplitWidget({ currentUser, rbs, saveMemberEdit, showToast }) {
+  const [open, setOpen] = useState(false);
+  const totalPerWeek = 2;
+  // myCount = Einsteller's turns per week, rbCount = rest split among rbs
+  const initMy = Math.max(0, Math.min(totalPerWeek, Math.round(totalPerWeek * ((currentUser.mistShare??50)/100))));
+  const [myCount, setMyCount] = useState(initMy);
+
+  const rbCount   = totalPerWeek - myCount;
+  const myPct     = Math.round(myCount / totalPerWeek * 100);
+
+  const handleSave = async () => {
+    await saveMemberEdit(currentUser.id, {...currentUser, mistShare: myPct, einstellerId: currentUser.einstellerId||""});
+    showToast("✅ Aufteilung gespeichert!");
+    setOpen(false);
+  };
+
+  const currentMy = Math.max(0, Math.min(totalPerWeek, Math.round(totalPerWeek * ((currentUser.mistShare??50)/100))));
+  const currentRb = totalPerWeek - currentMy;
+
+  return (
+    <>
+      <div style={{marginTop:14,borderTop:"1px solid #f0e8d8",paddingTop:12}}>
+        <div style={{...S.row,justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f"}}>⚖️ Aufteilung Mistdienst</div>
+            <div style={{fontSize:11,color:"#8b6040",marginTop:2}}>
+              Du: <b>{currentMy}×</b>/Woche · Reitbet.: <b>{currentRb}×</b>/Woche
+            </div>
+          </div>
+          <button onClick={()=>{ setMyCount(currentMy); setOpen(true); }}
+            style={{...S.btn("light"),padding:"6px 12px",fontSize:12}}>✏️ Anpassen</button>
+        </div>
+      </div>
+      {open&&(
+        <div style={S.modal}><div style={{...S.mBox,maxWidth:340}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:6,color:"#3d2b1f"}}>Aufteilung anpassen</div>
+          <div style={{fontSize:12,color:"#8b6040",marginBottom:20}}>
+            {totalPerWeek} Dienste/Woche auf {1+rbs.length} Personen verteilen
+          </div>
+          {/* Visual split bar */}
+          <div style={{height:8,borderRadius:8,overflow:"hidden",display:"flex",marginBottom:20}}>
+            <div style={{flex:myCount,background:"#c8913a",transition:"flex .2s"}}/>
+            <div style={{flex:rbCount||0.001,background:"#a8d8c8",transition:"flex .2s"}}/>
+          </div>
+          {/* Einsteller row */}
+          <div style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:14,padding:"10px 12px",background:"#faf6f0",borderRadius:10,border:"1px solid #e2d5c0"}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700}}>{currentUser.name.split(" ")[0]} <span style={{fontSize:10,color:"#aaa"}}>(Du)</span></div>
+              <div style={{fontSize:11,color:"#8b6040"}}>{myCount}× pro Woche</div>
+            </div>
+            <div style={{...S.row,gap:8}}>
+              <button onClick={()=>setMyCount(m=>Math.max(0,m-1))} disabled={myCount<=0}
+                style={{width:32,height:32,borderRadius:16,border:"none",background:myCount>0?"#e2d5c0":"#f5f0e8",cursor:myCount>0?"pointer":"default",fontSize:18,fontWeight:700,color:"#3d2b1f"}}>−</button>
+              <div style={{width:28,textAlign:"center",fontWeight:700,fontSize:16,color:"#c8913a"}}>{myCount}</div>
+              <button onClick={()=>setMyCount(m=>Math.min(totalPerWeek,m+1))} disabled={myCount>=totalPerWeek}
+                style={{width:32,height:32,borderRadius:16,border:"none",background:myCount<totalPerWeek?"#e2d5c0":"#f5f0e8",cursor:myCount<totalPerWeek?"pointer":"default",fontSize:18,fontWeight:700,color:"#3d2b1f"}}>+</button>
+            </div>
+          </div>
+          {/* Reitbeteiligung rows (read-only, shows their share) */}
+          {rbs.map((rb,i)=>{
+            const rbPer = rbs.length>0 ? (rbCount/rbs.length).toFixed(1) : 0;
+            return (
+              <div key={rb.id} style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:8,padding:"8px 12px",background:"#f5f0e8",borderRadius:10}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600}}>{rb.name.split(" ")[0]}</div>
+                  <div style={{fontSize:11,color:"#8b6040"}}>{rbPer}× pro Woche</div>
+                </div>
+                <div style={{width:28,textAlign:"center",fontWeight:700,fontSize:16,color:"#16a085"}}>{rbPer}</div>
+              </div>
+            );
+          })}
+          <div style={{fontSize:10,color:"#aaa",textAlign:"center",margin:"10px 0 14px"}}>
+            Gesamt: {myCount} + {rbCount} = {totalPerWeek}× / Woche
+          </div>
+          <div style={{...S.row,justifyContent:"flex-end",gap:8}}>
+            <button style={S.btn("light")} onClick={()=>setOpen(false)}>Abbrechen</button>
+            <button style={S.btn("primary")} onClick={handleSave}>💾 Speichern</button>
+          </div>
+        </div></div>
+      )}
+    </>
+  );
+}
+
+function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einstellerList, weekDates, weekOffset, setWeekOffset, toggleMist, isMistLocked, saveMemberEdit, showToast }) {
   const [adminView,   setAdminView]   = useState("week");
   const [monthOffset, setMonthOffset] = useState(0);
 
@@ -504,6 +589,18 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
             <span>🌴 = Urlaub</span>
             <span>🔒 = Gesperrt</span>
           </div>
+          {/* Aufteilung anpassen — nur wenn Reitbeteiligungen vorhanden */}
+          {(()=>{
+            const rbs = members.filter(rb=>rb.einstellerId===currentUser.id);
+            if(rbs.length===0) return null;
+            const totalWeek = 2;
+            const myShare   = currentUser.mistShare??50;
+            const myCount   = Math.max(1, Math.round(totalWeek * myShare/100));
+            const rbCount   = totalWeek - myCount;
+            return (
+              <MistSplitWidget currentUser={currentUser} rbs={rbs} saveMemberEdit={saveMemberEdit} showToast={showToast}/>
+            );
+          })()}
         </div>
       )}
 
@@ -1426,7 +1523,7 @@ export default function StallApp() {
       <div style={{paddingBottom:16}}>
         {tab==="home"     && <HomeScreen {...commonProps} events={events} mistData={mistData} finMonths={finMonths} finAccounts={finAccounts} selDay={selDay} setSelDay={setSelDay} upcomingEvents={upcomingEvents} unpaid={unpaid} mistWarnings={mistWarnings} getVacationLabel={getVacationLabel} {...finHelpers}/>}
         {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} deleteEvent={deleteEvent} setShowAddEvent={setShowAddEvent}/>}
-        {tab==="mist"     && <MistScreen {...commonProps} mistData={mistData} weekDates={weekDates} weekOffset={weekOffset} setWeekOffset={setWeekOffset} toggleMist={toggleMist} isMistLocked={isMistLocked}/>}
+        {tab==="mist"     && <MistScreen {...commonProps} mistData={mistData} weekDates={weekDates} weekOffset={weekOffset} setWeekOffset={setWeekOffset} toggleMist={toggleMist} isMistLocked={isMistLocked} saveMemberEdit={saveMemberEdit} showToast={showToast}/>}
         {tab==="members"  && <MembersScreen {...commonProps} showAddMember={showAddMember} setShowAddMember={setShowAddMember} newMember={newMember} setNewMember={setNewMember} addMember={addMember} deleteMember={deleteMember} saveMemberEdit={saveMemberEdit} getVacationLabel={getVacationLabel} editId={editId} setEditId={setEditId} editData={editData} setEditData={setEditData} pinMode={pinMode} setPinMode={setPinMode} pins={pins} setPins={setPins} pinErr={pinErr} setPinErr={setPinErr}/>}
         {tab==="finanzen" && <FinanzenScreen {...commonProps} finMonths={finMonths} finAccounts={finAccounts} finViewMonth={finViewMonth} finViewYear={finViewYear} setFinViewMonth={setFinViewMonth} setFinViewYear={setFinViewYear} editFee={editFee} setEditFee={setEditFee} editPay={editPay} setEditPay={setEditPay} addExtra={addExtra} setAddExtra={setAddExtra} extraForm={extraForm} setExtraForm={setExtraForm} {...finHelpers}/>}
       </div>
