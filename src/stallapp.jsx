@@ -6,12 +6,10 @@ fontLink.rel = "stylesheet";
 fontLink.href = "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=DM+Sans:wght@300;400;500;600&display=swap";
 document.head.appendChild(fontLink);
 
-// ── Supabase ───────────────────────────────────────────────────────────────
 const SUPA_URL = "https://yyinsnpbqiiohkdfpyxq.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aW5zbnBicWlpb2hrZGZweXhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMjQxMzcsImV4cCI6MjA4ODgwMDEzN30.ZpjwPDVEVbgYGNfnYEaX9AelW47Ch0V42u8aliqL3tc";
 const sb = createClient(SUPA_URL, SUPA_KEY);
 
-// ── Seed data (only used for first-time DB population) ─────────────────────
 const SEED_MEMBERS = [
   { id:1, name:"Anna Müller",    horse:"Estrella", type:"admin",           pin:"1234", paid:true,  phone:"0171-111111", einsteller_id:null },
   { id:2, name:"Ben Schneider",  horse:"Thunder",  type:"einsteller",      pin:"2222", paid:false, phone:"0172-222222", einsteller_id:null },
@@ -27,12 +25,10 @@ const SEED_EVENTS = [
   { id:3, type:"Impfen",     date:new Date(today.getFullYear(),today.getMonth(),today.getDate()+14).toISOString().slice(0,10), time:"14:00", note:"Influenza + Herpes",             color:"#27ae60" },
 ];
 
-// ── DB helpers: map DB row ↔ app object ────────────────────────────────────
 const dbToMember = r => ({ id:r.id, name:r.name, horse:r.horse||"", type:r.type, pin:r.pin, paid:r.paid, phone:r.phone||"", einstellerId:r.einsteller_id });
 const dbToEvent  = r => ({ id:r.id, type:r.type, date:r.date, time:r.time||"", note:r.note||"", color:r.color, createdBy:r.created_by||"" });
 const dbToVac    = r => ({ id:r.id, from:r.from_date, to:r.to_date, note:r.note||"" });
 
-// ── Date helpers ───────────────────────────────────────────────────────────
 const getWeekDates = (offset=0) => {
   const now=new Date(); const day=now.getDay()||7;
   const mon=new Date(now); mon.setDate(now.getDate()-day+1+offset*7);
@@ -44,26 +40,20 @@ const fmt   = d => d.toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",m
 const fmtD  = d => d.toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"});
 const fmtSh = d => d.toLocaleDateString("de-DE",{day:"2-digit",month:"short"});
 
-// A week belongs to the month that contains its Thursday (ISO standard).
-// Returns Monday-keys of all weeks belonging to the given month.
 const getWeeksInMonth = (year, month) => {
   const weeks = [];
-  // Iterate every day of the month, find its week-Monday, check if Thursday of that week is in this month
   const d = new Date(year, month, 1);
   while(d.getMonth() === month) {
-    const dow = d.getDay() || 7; // 1=Mon … 7=Sun
+    const dow = d.getDay() || 7;
     const mon = new Date(d); mon.setDate(d.getDate() - dow + 1);
-    const thu = new Date(mon); thu.setDate(mon.getDate() + 3); // Thursday
+    const thu = new Date(mon); thu.setDate(mon.getDate() + 3);
     const monKey = dk(mon);
-    if(thu.getFullYear()===year && thu.getMonth()===month && !weeks.includes(monKey)) {
-      weeks.push(monKey);
-    }
+    if(thu.getFullYear()===year && thu.getMonth()===month && !weeks.includes(monKey)) weeks.push(monKey);
     d.setDate(d.getDate() + 1);
   }
   return weeks;
 };
 
-// ── Quota helpers ──────────────────────────────────────────────────────────
 const getBaseGroupQuota = (einsteller, allMembers) => {
   const beteiligungen = allMembers.filter(m=>m.einstellerId===einsteller.id);
   return Math.max(1, Math.round(2 / (1 + beteiligungen.length)));
@@ -78,12 +68,10 @@ const getMemberWeekQuota = (member, weekMon, allMembers, vacations) => {
   return getBaseGroupQuota(root, allMembers);
 };
 const countMistMonth = (mistData, memberId, year, month) => {
-  // Count actual mist entries on days that belong to weeks of this month (Thu-rule)
-  // but only count days within those weeks (all 7 days, regardless of month boundary)
   let count = 0;
   getWeeksInMonth(year, month).forEach(monKey => {
-    for(let i=0; i<7; i++){
-      const d = new Date(monKey); d.setDate(d.getDate() + i);
+    for(let i=0;i<7;i++){
+      const d = new Date(monKey); d.setDate(d.getDate()+i);
       count += (mistData[dk(d)]||[]).includes(memberId) ? 1 : 0;
     }
   });
@@ -91,15 +79,12 @@ const countMistMonth = (mistData, memberId, year, month) => {
 };
 const getMonthlyQuota = (member, allMembers, vacations, year, month) => {
   let total = 0;
-  getWeeksInMonth(year, month).forEach(monKey => {
-    total += getMemberWeekQuota(member, monKey, allMembers, vacations);
-  });
+  getWeeksInMonth(year, month).forEach(monKey => { total += getMemberWeekQuota(member, monKey, allMembers, vacations); });
   return total;
 };
 const isOnVacationDay = (memberId, dayKey, vacations) =>
   (vacations[memberId]||[]).some(v=>v.from<=dayKey&&v.to>=dayKey);
 
-// ── Styles ─────────────────────────────────────────────────────────────────
 const S = {
   root:    { fontFamily:"'DM Sans',sans-serif", background:"#f5f0e8", minHeight:"100vh", color:"#2c2416", maxWidth:430, margin:"0 auto", paddingBottom:90 },
   header:  { background:"linear-gradient(160deg,#3d2b1f 0%,#6b4c2a 100%)", padding:"20px 20px 14px", position:"sticky", top:0, zIndex:100 },
@@ -121,7 +106,6 @@ const S = {
   ava:     bg=>({ width:38, height:38, borderRadius:"50%", background:bg||"linear-gradient(135deg,#c8913a,#8b6040)", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontWeight:700, fontSize:15, flexShrink:0 }),
 };
 
-// ── Icons ──────────────────────────────────────────────────────────────────
 const Ic = ({ n, s=20 }) => {
   const p = { width:s, height:s, viewBox:"0 0 24 24", fill:"none", stroke:"currentColor", strokeWidth:"2", strokeLinecap:"round", strokeLinejoin:"round" };
   const map = {
@@ -144,45 +128,933 @@ const Ic = ({ n, s=20 }) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════
+// SCREEN COMPONENTS — defined outside StallApp so React never remounts them
+// ══════════════════════════════════════════════════════════════════════════
+
+function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations, finMonths, finAccounts, selDay, setSelDay, upcomingEvents, unpaid, mistWarnings, getVacationLabel, calcTotal, getFinMonth }) {
+  const curYear  = today.getFullYear();
+  const curMonth = today.getMonth();
+  const isE = currentUser.type==="einsteller"||(currentUser.type==="admin"&&currentUser.horse);
+  const mQ  = isE ? getMonthlyQuota(currentUser,members,vacations,curYear,curMonth) : 0;
+  const mC  = isE ? countMistMonth(mistData,currentUser.id,curYear,curMonth) : 0;
+  const myVacLabel = getVacationLabel(currentUser.id);
+
+  const calYear  = today.getFullYear();
+  const calMonth = today.getMonth();
+  const calDays  = [];
+  const cd = new Date(calYear, calMonth, 1);
+  while(cd.getMonth()===calMonth){ calDays.push(new Date(cd)); cd.setDate(cd.getDate()+1); }
+  const leadingBlanks = (new Date(calYear,calMonth,1).getDay()||7)-1;
+
+  const getDayInfo = (day) => {
+    const k = dkl(day);
+    const myMist  = (mistData[k]||[]).includes(currentUser.id);
+    const myVac   = isOnVacationDay(currentUser.id, k, vacations);
+    const dayEvts = events.filter(e=>e.date===k);
+    return { k, myMist, myVac, dayEvts };
+  };
+  const getDots = (info, isSelected) => {
+    const dots = [];
+    if(info.myVac)  dots.push("#16a085");
+    if(info.myMist) dots.push("#c8913a");
+    info.dayEvts.forEach(e=>dots.push(e.color));
+    return dots.map((c,i)=>(
+      <div key={i} style={{width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":c,flexShrink:0}}/>
+    ));
+  };
+  const selInfo = selDay ? getDayInfo(selDay) : null;
+
+  return (
+    <div>
+      <div style={{background:"linear-gradient(135deg,#3d2b1f,#7a5230)",margin:"14px 16px 0",borderRadius:16,padding:"20px 18px",color:"#f5e6c8",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",right:-10,top:-10,opacity:.1,fontSize:90}}>🐴</div>
+        <div style={{fontSize:11,color:"#c8913a",marginBottom:2}}>{fmtD(today)}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,lineHeight:1.2}}>Hallo, {currentUser.name.split(" ")[0]}!</div>
+        <div style={{fontSize:11,color:"#d4b88a",marginTop:6}}>
+          {currentUser.type==="admin"?"👑 Admin":currentUser.type==="einsteller"?"🐴 Einsteller":"🤝 Reitbeteiligung"}
+          {currentUser.horse?` · ${currentUser.horse}`:""}
+        </div>
+        {myVacLabel&&<div style={{marginTop:8,background:"rgba(22,160,133,.25)",borderRadius:8,padding:"5px 10px",fontSize:11,color:"#a8e6cf"}}>{myVacLabel}</div>}
+      </div>
+      {isAdmin&&mistWarnings.length>0&&(
+        <div style={{...S.card,background:"#fff8ec",border:"1.5px solid #f5c842"}}>
+          <div style={S.row}><Ic n="warn"/><div>
+            <div style={{fontSize:12,fontWeight:700,color:"#8B6914"}}>⚠️ Mist-Erinnerung</div>
+            <div style={{fontSize:11,color:"#6b4c2a",marginTop:2}}>{mistWarnings.map(m=>m.name).join(", ")} — Monatspflicht noch nicht erfüllt</div>
+          </div></div>
+        </div>
+      )}
+      {isAdmin&&unpaid.length>0&&(
+        <div style={{...S.card,background:"#fff5f5",border:"1.5px solid #f5c0c0"}}>
+          <div style={S.row}><span style={{color:"#c0392b"}}><Ic n="warn"/></span><div>
+            <div style={{fontSize:12,fontWeight:700,color:"#922b21"}}>💰 Offene Zahlungen</div>
+            <div style={{fontSize:11,color:"#7b241c",marginTop:2}}>{unpaid.map(m=>m.name).join(", ")} — Stallgebühr ausstehend</div>
+          </div></div>
+        </div>
+      )}
+      {isAdmin&&(
+        <div style={S.card}>
+          <div style={S.cTitle}>💰 Zahlungsübersicht</div>
+          {members.filter(m=>m.type==="einsteller").map(m=>{
+            const fm=getFinMonth(m.id,curYear,curMonth);
+            const total=calcTotal(m.id,curYear,curMonth);
+            const paid=fm.payment!==null&&fm.payment!==undefined;
+            return (
+              <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:500}}>{m.name}</div>
+                  <div style={{fontSize:10,color:"#8b6040"}}>🐴 {m.horse} · {total.toFixed(2)}€</div>
+                </div>
+                {paid
+                  ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ {Number(fm.payment).toFixed(2)}€</span>
+                  : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Offen</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {isE&&(
+        <div style={S.card}>
+          <div style={S.cTitle}>Mein Überblick</div>
+          <div style={{...S.row,justifyContent:"space-between",marginBottom:8}}>
+            <div>
+              <div style={{fontSize:13}}>🧹 Mistdienst: <b style={{color:mC>=mQ?"#27ae60":"#c0392b"}}>{mC}/{mQ}×</b></div>
+              <div style={{fontSize:11,color:"#aaa",marginTop:2}}>Aufgeteilt mit {members.filter(m=>m.einstellerId===currentUser.id).length} Reitbet.</div>
+            </div>
+            {mC>=mQ?<span style={{color:"#27ae60",fontWeight:700,fontSize:12}}>✓ Erledigt!</span>:<span style={{color:"#c0392b",fontWeight:700,fontSize:12}}>Noch offen</span>}
+          </div>
+          {currentUser.type!=="reitbeteiligung"&&(()=>{
+            const hFm    = getFinMonth(currentUser.id, curYear, curMonth);
+            const hTotal = calcTotal(currentUser.id, curYear, curMonth);
+            const hPaid  = hFm.payment!==null&&hFm.payment!==undefined;
+            return (
+              <div style={{...S.row,justifyContent:"space-between",marginTop:4,paddingTop:10,borderTop:"1px solid #f0e8d8"}}>
+                <div>
+                  <div style={{fontSize:13}}>💰 Stallgebühr {today.toLocaleDateString("de-DE",{month:"long"})}</div>
+                  <div style={{fontSize:11,color:"#aaa",marginTop:1}}>{hTotal.toFixed(2)}€ fällig</div>
+                </div>
+                {hPaid
+                  ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ {Number(hFm.payment).toFixed(2)}€</span>
+                  : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Ausstehend</span>}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Mini Month Calendar */}
+      <div style={S.card}>
+        <div style={S.cTitle}>📅 {today.toLocaleDateString("de-DE",{month:"long",year:"numeric"})}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>
+          {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
+            <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700}}>{d}</div>
+          ))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+          {Array.from({length:leadingBlanks}).map((_,i)=><div key={"b"+i}/>)}
+          {calDays.map(day=>{
+            const info       = getDayInfo(day);
+            const isToday    = info.k===dkl(today);
+            const isSelected = selDay && dkl(day)===dkl(selDay);
+            const hasContent = info.myMist||info.myVac||info.dayEvts.length>0;
+            const dots       = getDots(info, isSelected);
+            return (
+              <div key={info.k}
+                onClick={()=>hasContent&&setSelDay(prev=>prev&&dkl(prev)===info.k?null:day)}
+                style={{
+                  aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",
+                  alignItems:"center",justifyContent:"center",gap:2,
+                  cursor:hasContent?"pointer":"default",
+                  background:isSelected?"#3d2b1f":info.myMist?"#f5e8d4":info.myVac?"#e8f8f5":"#fff",
+                  border:isToday?"2px solid #c8913a":isSelected?"2px solid #3d2b1f":"1px solid #ede5d5",
+                  transition:"all .15s"
+                }}>
+                <div style={{fontSize:10,fontWeight:isToday?700:400,color:isSelected?"#fff":info.myMist?"#c8913a":"#2c2416"}}>{day.getDate()}</div>
+                {dots.length>0&&<div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{display:"flex",gap:10,marginTop:10,fontSize:10,color:"#aaa",flexWrap:"wrap"}}>
+          <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c8913a",display:"inline-block"}}/> Mein Mist</span>
+          <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#16a085",display:"inline-block"}}/> Urlaub</span>
+          <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c0392b",display:"inline-block"}}/> Termin</span>
+        </div>
+        {selInfo&&(
+          <div style={{marginTop:12,background:"#faf6f0",borderRadius:10,padding:"10px 14px",border:"1px solid #e2d5c0"}}>
+            <div style={{fontWeight:700,fontSize:12,color:"#3d2b1f",marginBottom:8}}>
+              {selDay.toLocaleDateString("de-DE",{weekday:"long",day:"2-digit",month:"long"})}
+            </div>
+            {selInfo.myVac&&(
+              <div style={{...S.row,gap:8,marginBottom:6}}>
+                <span style={{fontSize:14}}>🌴</span>
+                <span style={{fontSize:12,color:"#16a085",fontWeight:600}}>Dein Urlaub</span>
+              </div>
+            )}
+            {selInfo.myMist&&(
+              <div style={{...S.row,gap:8,marginBottom:6}}>
+                <span style={{width:10,height:10,borderRadius:"50%",background:"#c8913a",flexShrink:0}}/>
+                <span style={{fontSize:12,color:"#c8913a",fontWeight:600}}>🧹 Dein Mistdienst</span>
+              </div>
+            )}
+            {selInfo.dayEvts.map(e=>(
+              <div key={e.id} style={{...S.row,gap:8,marginBottom:6}}>
+                <span style={{width:10,height:10,borderRadius:"50%",background:e.color,flexShrink:0}}/>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600,color:"#2c2416"}}>{e.type}</div>
+                  <div style={{fontSize:10,color:"#8b6040"}}>
+                    {e.time?`🕐 ${e.time} Uhr · `:""}
+                    {e.note||""}
+                    {e.createdBy?` · 👤 ${e.createdBy}`:""}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cTitle}>Nächste Termine</div>
+        {upcomingEvents.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Keine Termine geplant</div>}
+        {upcomingEvents.map(e=>(
+          <div key={e.id} style={{...S.row,marginBottom:10}}>
+            <div style={{width:4,height:36,borderRadius:4,background:e.color,flexShrink:0}}/>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:600,fontSize:13}}>{e.type}</div>
+              <div style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(e.date+"T00:00:00"))}{e.time?` · ${e.time} Uhr`:""}{e.note?` · ${e.note}`:""}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CalendarScreen({ currentUser, isAdmin, members, events, vacations, einstellerList, showAddVacation, setShowAddVacation, newVac, setNewVac, vacTargetId, openAddVacation, addVacation, deleteVacation, deleteEvent, setShowAddEvent }) {
+  const canAdd = isAdmin || currentUser.type==="einsteller";
+  return (
+    <div>
+      <div style={S.card}>
+        <div style={{...S.row,justifyContent:"space-between",marginBottom:14}}>
+          <div style={S.cTitle}>Termine</div>
+          {canAdd&&<button style={{...S.btn("primary"),padding:"8px 12px"}} onClick={()=>setShowAddEvent(true)}><Ic n="plus" s={16}/></button>}
+        </div>
+        {!canAdd&&<div style={{background:"#f5f0e8",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#8b6040",marginBottom:12}}>📅 Termine werden von Einstellern und Admin verwaltet</div>}
+        {[...events].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
+          const canDelete = isAdmin || e.createdBy===currentUser.name;
+          return (
+            <div key={e.id} style={{display:"flex",gap:10,marginBottom:12,alignItems:"flex-start"}}>
+              <div style={{width:5,borderRadius:4,background:e.color,alignSelf:"stretch",flexShrink:0,minHeight:40}}/>
+              <div style={{flex:1}}>
+                <div style={{...S.row,justifyContent:"space-between"}}>
+                  <span style={{fontWeight:600,fontSize:14}}>{e.type}</span>
+                  <span style={{fontSize:10,color:"#8b6040"}}>{new Date(e.date+"T00:00:00").toLocaleDateString("de-DE",{day:"2-digit",month:"short",year:"numeric"})}</span>
+                </div>
+                {e.time&&<div style={{fontSize:11,color:"#8b6040",marginTop:2}}>🕐 {e.time} Uhr</div>}
+                {e.note&&<div style={{fontSize:11,color:"#666",marginTop:2}}>{e.note}</div>}
+                {e.createdBy&&<div style={{fontSize:10,color:"#b89060",marginTop:3}}>👤 {e.createdBy}</div>}
+              </div>
+              {canDelete&&<button onClick={()=>deleteEvent(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="x" s={14}/></button>}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={S.card}>
+        <div style={{...S.row,justifyContent:"space-between",marginBottom:10}}>
+          <div style={S.cTitle}>🌴 Urlaube</div>
+          <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}} onClick={()=>openAddVacation(currentUser.id)}>+ Eigenen eintragen</button>
+        </div>
+        {(isAdmin?[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")]:[currentUser]).map(m=>{
+          const vacs=vacations[m.id]||[]; const canEdit=isAdmin||currentUser.id===m.id;
+          if(vacs.length===0) return null;
+          return vacs.map(v=>(
+            <div key={v.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f5f0e8"}}>
+              <div>
+                {isAdmin&&<span style={{fontSize:12,fontWeight:600}}>{m.name.split(" ")[0]} · </span>}
+                <span style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(v.from+"T00:00:00"))} – {fmtSh(new Date(v.to+"T00:00:00"))}</span>
+                {v.note&&<span style={{fontSize:10,color:"#aaa"}}> · {v.note}</span>}
+              </div>
+              {canEdit&&<button onClick={()=>deleteVacation(m.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>}
+            </div>
+          ));
+        })}
+        {isAdmin&&(
+          <div style={{marginTop:8}}>
+            <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Urlaub für andere eintragen:</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].filter(m=>m.id!==currentUser.id).map(m=>(
+                <button key={m.id} style={{...S.btn("light"),padding:"5px 10px",fontSize:11,borderRadius:8}} onClick={()=>openAddVacation(m.id)}>+ {m.name.split(" ")[0]}</button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showAddVacation&&(
+        <div style={S.modal}><div style={S.mBox}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>🌴 Urlaub eintragen</div>
+          <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>für: <b>{members.find(m=>m.id===vacTargetId)?.name}</b></div>
+          <label style={S.label}>Von</label>
+          <input type="date" style={S.input} value={newVac.from} onChange={e=>setNewVac(p=>({...p,from:e.target.value}))}/>
+          <label style={S.label}>Bis</label>
+          <input type="date" style={S.input} value={newVac.to} onChange={e=>setNewVac(p=>({...p,to:e.target.value}))}/>
+          <label style={S.label}>Notiz (optional)</label>
+          <input style={S.input} placeholder="z.B. Sommerurlaub" value={newVac.note} onChange={e=>setNewVac(p=>({...p,note:e.target.value}))}/>
+          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+            <button style={S.btn("light")} onClick={()=>setShowAddVacation(false)}>Abbrechen</button>
+            <button style={S.btn("teal")} onClick={addVacation}>Eintragen</button>
+          </div>
+        </div></div>
+      )}
+    </div>
+  );
+}
+
+function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einstellerList, weekDates, weekOffset, setWeekOffset, toggleMist, isMistLocked }) {
+  const [adminView,   setAdminView]   = useState("week");
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  const viewDate  = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+  const viewYear  = viewDate.getFullYear();
+  const viewMonth = viewDate.getMonth();
+  const monthLabel = viewDate.toLocaleDateString("de-DE",{month:"long",year:"numeric"});
+
+  const daysInMonth = () => {
+    const days = []; const d = new Date(viewYear, viewMonth, 1);
+    while(d.getMonth()===viewMonth){ days.push(new Date(d)); d.setDate(d.getDate()+1); }
+    return days;
+  };
+
+  const adminRows=[];
+  einstellerList.forEach(e=>{
+    adminRows.push({member:e,isChild:false});
+    members.filter(m=>m.einstellerId===e.id).forEach(rb=>adminRows.push({member:rb,isChild:true}));
+  });
+
+  return (
+    <div>
+      {!isAdmin&&(
+        <div style={S.card}>
+          <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+            <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o-1)}>‹</button>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#3d2b1f"}}>{monthLabel}</div>
+              {monthOffset===0&&<div style={{fontSize:10,color:"#c8913a",fontWeight:600}}>DIESER MONAT</div>}
+            </div>
+            <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o+1)}>›</button>
+          </div>
+          {(()=>{
+            const mQ=getMonthlyQuota(currentUser,members,vacations,viewYear,viewMonth);
+            const mC=countMistMonth(mistData,currentUser.id,viewYear,viewMonth);
+            return (
+              <div style={{...S.row,justifyContent:"space-between",background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+                <div>
+                  <div style={{fontSize:12,color:"#8b6040"}}>Mein Monatssoll</div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:mC>=mQ?"#27ae60":"#c0392b",fontWeight:700}}>{mC}<span style={{fontSize:13,color:"#aaa"}}>/{mQ}×</span></div>
+                </div>
+                <div style={{fontSize:24}}>{mC>=mQ?"✅":"⏳"}</div>
+              </div>
+            );
+          })()}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:6}}>
+            {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
+              <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700,paddingBottom:4}}>{d}</div>
+            ))}
+            {Array.from({length:(new Date(viewYear,viewMonth,1).getDay()||7)-1}).map((_,i)=><div key={"e"+i}/>)}
+            {daysInMonth().map(d=>{
+              const k            = dk(d);
+              const checked      = (mistData[k]||[]).includes(currentUser.id);
+              const isToday      = k===dk(today);
+              const onVac        = isOnVacationDay(currentUser.id,k,vacations);
+              const takenByOther = (mistData[k]||[]).some(id=>id!==currentUser.id);
+              const locked       = isMistLocked(k);
+              const canClick     = !onVac && !takenByOther && !locked;
+              return (
+                <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
+                  style={{
+                    aspectRatio:"1",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                    cursor:canClick?"pointer":"default",
+                    background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":locked&&!checked?"#f5f0e8":"#fff",
+                    border:isToday?"2px solid #c8913a":checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther?"2px solid #f5c0c0":"1px solid #e2d5c0",
+                    opacity:locked&&!checked?0.6:1, transition:"all .15s"
+                  }}>
+                  <div style={{fontSize:11,fontWeight:isToday?700:400,color:checked?"#fff":takenByOther?"#c0392b":onVac?"#16a085":"#2c2416"}}>{d.getDate()}</div>
+                  {onVac&&<div style={{fontSize:8}}>🌴</div>}
+                  {!onVac&&checked&&<div style={{fontSize:8,color:"#fff"}}>✓</div>}
+                  {!onVac&&!checked&&takenByOther&&<div style={{fontSize:8,color:"#c0392b"}}>✗</div>}
+                  {!onVac&&!checked&&!takenByOther&&locked&&<div style={{fontSize:8,color:"#aaa"}}>🔒</div>}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa",marginTop:6}}>
+            <span>✓ = Eingetragen</span>
+            <span style={{color:"#c0392b"}}>✗ = Tag vergeben</span>
+            <span>🌴 = Urlaub</span>
+            <span>🔒 = Gesperrt</span>
+          </div>
+        </div>
+      )}
+
+      {isAdmin&&(
+        <div style={S.card}>
+          <div style={{...S.row,justifyContent:"center",gap:6,marginBottom:14}}>
+            <button onClick={()=>setAdminView("week")} style={{...S.btn(adminView==="week"?"primary":"light"),padding:"6px 16px",fontSize:12}}>📅 Woche</button>
+            <button onClick={()=>setAdminView("month")} style={{...S.btn(adminView==="month"?"primary":"light"),padding:"6px 16px",fontSize:12}}>📆 Monat</button>
+          </div>
+
+          {adminView==="week"&&(<>
+            <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+              <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setWeekOffset(w=>w-1)}>‹</button>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:13,color:"#3d2b1f"}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</div>
+                {weekOffset===0&&<div style={{fontSize:10,color:"#c8913a",fontWeight:600}}>DIESE WOCHE</div>}
+              </div>
+              <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setWeekOffset(w=>w+1)}>›</button>
+            </div>
+            <div style={S.divider}/>
+            <div style={{display:"grid",gridTemplateColumns:"96px repeat(7,1fr)",gap:2,marginBottom:6}}>
+              <div/>
+              {weekDates.map(d=>(
+                <div key={dk(d)} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:600,lineHeight:1.3}}>
+                  {d.toLocaleDateString("de-DE",{weekday:"short"})}<br/>{d.getDate()}
+                </div>
+              ))}
+            </div>
+            {adminRows.map(({member:m,isChild})=>{
+              const mYear=weekDates[0].getFullYear(); const mMonth=weekDates[0].getMonth();
+              const monthQ=getMonthlyQuota(m,members,vacations,mYear,mMonth);
+              const monthC=countMistMonth(mistData,m.id,mYear,mMonth);
+              const ok=monthC>=monthQ;
+              const onVacWeek=getMemberWeekQuota(m,dk(weekDates[0]),members,vacations)===0;
+              const isMe=currentUser.id===m.id;
+              return (
+                <div key={m.id} style={{marginBottom:4}}>
+                  <div style={{display:"grid",gridTemplateColumns:"96px repeat(7,1fr)",gap:2,alignItems:"center"}}>
+                    <div style={{paddingLeft:isChild?10:0}}>
+                      {isChild&&<div style={{fontSize:8,color:"#b89060",marginBottom:1}}>↳ Beteil.</div>}
+                      <div style={{fontSize:11,fontWeight:isMe?700:500,color:isMe?"#c8913a":"#2c2416",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name.split(" ")[0]}</div>
+                      {onVacWeek?<div style={{fontSize:9,color:"#16a085",fontWeight:600}}>🌴 Urlaub</div>
+                        :<div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{monthC}/{monthQ}Mo</div>}
+                    </div>
+                    {weekDates.map(d=>{
+                      const k=dk(d); const checked=(mistData[k]||[]).includes(m.id);
+                      const isPast=d<new Date(dk(today)); const onVac=isOnVacationDay(m.id,k,vacations);
+                      const takenByOther=(mistData[k]||[]).some(id=>id!==m.id);
+                      return (
+                        <div key={k} onClick={()=>toggleMist(k,m.id)}
+                          style={{height:30,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
+                            background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":isPast?"#f5f0e8":"#faf6f0",
+                            border:checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther?"2px solid #f5c0c0":isMe&&!isPast?"2px solid #c8913a55":"2px solid #e2d5c0",
+                            transition:"all .15s"}}>
+                          {onVac&&<span style={{fontSize:10}}>🌴</span>}
+                          {!onVac&&checked&&<span style={{color:"#fff",fontSize:11}}>✓</span>}
+                          {!onVac&&!checked&&takenByOther&&<span style={{fontSize:9,color:"#c0392b"}}>✗</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa"}}>
+              <span>✓ = Eingetragen</span><span>🌴 = Urlaub</span>
+              <span style={{color:"#c0392b"}}>✗ = Tag vergeben</span>
+              <span style={{color:"#c8913a",fontWeight:600}}>Mo = Monatssoll</span>
+            </div>
+          </>)}
+
+          {adminView==="month"&&(<>
+            <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+              <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o-1)}>‹</button>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#3d2b1f"}}>{monthLabel}</div>
+                {monthOffset===0&&<div style={{fontSize:10,color:"#c8913a",fontWeight:600}}>DIESER MONAT</div>}
+              </div>
+              <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o+1)}>›</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:8}}>
+              {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
+                <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700,paddingBottom:3}}>{d}</div>
+              ))}
+              {Array.from({length:(new Date(viewYear,viewMonth,1).getDay()||7)-1}).map((_,i)=><div key={"e"+i}/>)}
+              {daysInMonth().map(d=>{
+                const k=dk(d); const bookedIds=mistData[k]||[]; const isToday=k===dk(today);
+                const isPast=d<new Date(dk(today)); const hasEntry=bookedIds.length>0;
+                const bookedMember=hasEntry?members.find(m=>m.id===bookedIds[0]):null;
+                const someoneOnVac=[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].some(m=>isOnVacationDay(m.id,k,vacations));
+                return (
+                  <div key={k} style={{aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                    background:hasEntry?"#c8913a":isPast?"#f5f0e8":"#fff",
+                    border:isToday?"2px solid #c8913a":hasEntry?"2px solid #a07030":"1px solid #e2d5c0",
+                    cursor:"default",transition:"all .15s"}}>
+                    <div style={{fontSize:10,fontWeight:isToday?700:400,color:hasEntry?"#fff":"#2c2416"}}>{d.getDate()}</div>
+                    {hasEntry&&<div style={{fontSize:7,color:"#fff5e0",fontWeight:600,lineHeight:1,textAlign:"center",overflow:"hidden",maxWidth:"90%",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bookedMember?.name.split(" ")[0]}</div>}
+                    {!hasEntry&&someoneOnVac&&<div style={{fontSize:8}}>🌴</div>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa",marginBottom:16}}>
+              <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:3,background:"#c8913a",display:"inline-block"}}/> Belegt</span>
+              <span>🌴 = Urlaub</span>
+            </div>
+            <div style={{borderTop:"1px solid #f0e8d8",paddingTop:12}}>
+              <div style={{fontWeight:700,fontSize:12,color:"#3d2b1f",marginBottom:8}}>Offene Dienste {monthLabel}</div>
+              {[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].map(m=>{
+                const mQ=getMonthlyQuota(m,members,vacations,viewYear,viewMonth);
+                const mC=countMistMonth(mistData,m.id,viewYear,viewMonth);
+                const isChild=m.type==="reitbeteiligung";
+                return (
+                  <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",paddingLeft:isChild?12:0,borderBottom:"1px solid #f5f0e8"}}>
+                    <div>
+                      {isChild&&<span style={{fontSize:9,color:"#b89060"}}>↳ </span>}
+                      <span style={{fontSize:12,fontWeight:mC>=mQ?400:600,color:mC>=mQ?"#aaa":"#2c2416"}}>{m.name.split(" ")[0]} {m.name.split(" ")[1]?.charAt(0)}.</span>
+                      {(vacations[m.id]||[]).length>0&&<span style={{fontSize:10}}> 🌴</span>}
+                    </div>
+                    <span style={{fontSize:11,fontWeight:700,color:mC>=mQ?"#27ae60":"#c0392b",background:mC>=mQ?"#d5f5e3":"#fdecea",padding:"3px 8px",borderRadius:20}}>{mC>=mQ?"✓ Erledigt":`${mC}/${mQ}×`}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacations, showAddMember, setShowAddMember, newMember, setNewMember, addMember, deleteMember, saveMemberEdit, getVacationLabel, editId, setEditId, editData, setEditData, pinMode, setPinMode, pins, setPins, pinErr, setPinErr, showToast }) {
+  const startEdit = m => { setEditId(m.id); setEditData({name:m.name,horse:m.horse,phone:m.phone||"",pin:m.pin,type:m.type,einstellerId:m.einstellerId||""}); };
+  const cancelEdit = () => setEditId(null);
+  const saveEdit = async id => {
+    if(!editData.name||!editData.pin) return;
+    await saveMemberEdit(id, editData);
+    setEditId(null);
+  };
+  const inS = {...S.input,marginBottom:6,padding:"8px 10px",fontSize:12};
+  const lS  = {...S.label,marginBottom:2};
+
+  const MRow = ({m, isChild}) => {
+    const isEditing = isAdmin&&editId===m.id;
+    const avBg = m.type==="admin"?"linear-gradient(135deg,#c8913a,#f5c842)":isChild?"linear-gradient(135deg,#7f8c8d,#aaa)":undefined;
+    const avSz = isChild?{width:30,height:30,fontSize:12}:{};
+    return (
+      <div style={isChild?{paddingLeft:14,paddingTop:10,borderTop:"1px dashed #f0e8d8"}:{}}>
+        {!isEditing?(
+          <div style={{...S.row,justifyContent:"space-between"}}>
+            <div style={{...S.row,gap:10}}>
+              <div style={{...S.ava(avBg),...avSz}}>{m.name.charAt(0)}</div>
+              <div>
+                <div style={{fontWeight:600,fontSize:isChild?12:13}}>{m.name} {m.type==="admin"&&<span style={{fontSize:10,color:"#c8913a"}}>👑</span>}</div>
+                <div style={{fontSize:11,color:"#8b6040"}}>{m.type==="reitbeteiligung"?"🤝 Reitbeteiligung":m.type==="admin"?"👑 Admin":"🐴 Einsteller"}{m.horse?` · ${m.horse}`:""}</div>
+                {isAdmin&&<><div style={{fontSize:10,color:"#aaa"}}>{m.phone&&`📞 ${m.phone}`}</div><div style={{fontSize:10,color:"#b89060"}}>PIN: {m.pin}</div></>}
+                {getVacationLabel(m.id)&&<div style={{fontSize:10,color:"#16a085",marginTop:2}}>{getVacationLabel(m.id)}</div>}
+              </div>
+            </div>
+            {isAdmin&&(
+              <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
+                <button onClick={()=>startEdit(m)} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,color:"#8b6040"}}>✏️ Bearbeiten</button>
+                {m.type!=="admin"&&<button onClick={()=>deleteMember(m.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:"2px 4px"}}><Ic n="x" s={13}/></button>}
+              </div>
+            )}
+          </div>
+        ):(
+          <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#c8913a",marginBottom:10}}>✏️ Bearbeiten: {m.name}</div>
+            <label style={lS}>Name</label><input style={inS} value={editData.name} onChange={e=>setEditData(p=>({...p,name:e.target.value}))}/>
+            <label style={lS}>Pferd</label><input style={inS} value={editData.horse} onChange={e=>setEditData(p=>({...p,horse:e.target.value}))}/>
+            <label style={lS}>Telefon</label><input style={inS} value={editData.phone} onChange={e=>setEditData(p=>({...p,phone:e.target.value}))}/>
+            <label style={lS}>PIN zurücksetzen</label><input style={inS} maxLength={4} value={editData.pin} onChange={e=>setEditData(p=>({...p,pin:e.target.value.replace(/\D/,"")}))}/>
+            {m.type!=="admin"&&<><label style={lS}>Typ</label>
+              <select style={inS} value={editData.type} onChange={e=>setEditData(p=>({...p,type:e.target.value,einstellerId:""}))}>
+                <option value="einsteller">🐴 Einsteller</option><option value="reitbeteiligung">🤝 Reitbeteiligung</option>
+              </select></>}
+            {editData.type==="reitbeteiligung"&&<><label style={lS}>Gehört zu Einsteller</label>
+              <select style={inS} value={editData.einstellerId} onChange={e=>setEditData(p=>({...p,einstellerId:e.target.value}))}>
+                <option value="">— bitte wählen —</option>
+                {einstellerList.filter(x=>x.id!==m.id).map(x=><option key={x.id} value={x.id}>{x.name} ({x.horse})</option>)}
+              </select></>}
+            <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+              <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={cancelEdit}>Abbrechen</button>
+              <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={()=>saveEdit(m.id)}>💾 Speichern</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {!isAdmin&&(
+        <div style={S.card}>
+          <div style={S.cTitle}>Mein Profil</div>
+          <div style={{...S.row,gap:10,marginBottom:12}}>
+            <div style={S.ava()}>{currentUser.name.charAt(0)}</div>
+            <div>
+              <div style={{fontWeight:600,fontSize:14}}>{currentUser.name}</div>
+              <div style={{fontSize:11,color:"#8b6040"}}>{currentUser.type==="einsteller"?"🐴 Einsteller":"🤝 Reitbeteiligung"}{currentUser.horse?` · ${currentUser.horse}`:""}</div>
+              {currentUser.phone&&<div style={{fontSize:11,color:"#aaa"}}>📞 {currentUser.phone}</div>}
+            </div>
+          </div>
+          {!pinMode?(
+            <button style={{...S.btn("light"),padding:"8px 14px",fontSize:12}} onClick={()=>setPinMode(true)}>🔑 PIN ändern</button>
+          ):(
+            <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a",marginTop:8}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#c8913a",marginBottom:10}}>🔑 PIN ändern</div>
+              <label style={S.label}>Alte PIN</label>
+              <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.old} onChange={e=>setPins(p=>({...p,old:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
+              <label style={S.label}>Neue PIN</label>
+              <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.n1} onChange={e=>setPins(p=>({...p,n1:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
+              <label style={S.label}>Neue PIN bestätigen</label>
+              <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.n2} onChange={e=>setPins(p=>({...p,n2:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
+              {pinErr&&<div style={{fontSize:11,color:"#c0392b",marginBottom:8}}>{pinErr}</div>}
+              <div style={{...S.row,justifyContent:"flex-end",gap:8}}>
+                <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={()=>{setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");}}>Abbrechen</button>
+                <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={async()=>{
+                  if(pins.old!==currentUser.pin){setPinErr("Alte PIN falsch");return;}
+                  if(pins.n1.length!==4){setPinErr("Neue PIN muss 4 Ziffern haben");return;}
+                  if(pins.n1!==pins.n2){setPinErr("PINs stimmen nicht überein");return;}
+                  await saveMemberEdit(currentUser.id,{...currentUser,pin:pins.n1,einstellerId:currentUser.einstellerId||""});
+                  setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");
+                  showToast("✅ PIN erfolgreich geändert!");
+                }}>💾 Speichern</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {einstellerList.map(e=>(
+        <div key={e.id} style={S.card}>
+          <MRow m={e} isChild={false}/>
+          {members.filter(m=>m.einstellerId===e.id).map(rb=><MRow key={rb.id} m={rb} isChild={true}/>)}
+        </div>
+      ))}
+      {isAdmin&&<div style={{margin:"14px 16px 0"}}><button style={{...S.btn("primary"),width:"100%",padding:14}} onClick={()=>setShowAddMember(true)}>+ Mitglied hinzufügen</button></div>}
+      {showAddMember&&(
+        <div style={S.modal}><div style={S.mBox}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Neues Mitglied</div>
+          <label style={S.label}>Name</label><input style={S.input} placeholder="Vor- und Nachname" value={newMember.name} onChange={e=>setNewMember(p=>({...p,name:e.target.value}))}/>
+          <label style={S.label}>Pferd</label><input style={S.input} placeholder="Name des Pferdes" value={newMember.horse} onChange={e=>setNewMember(p=>({...p,horse:e.target.value}))}/>
+          <label style={S.label}>Typ</label>
+          <select style={S.input} value={newMember.type} onChange={e=>setNewMember(p=>({...p,type:e.target.value,einstellerId:""}))}>
+            <option value="einsteller">Einsteller</option><option value="reitbeteiligung">Reitbeteiligung</option><option value="admin">Admin</option>
+          </select>
+          {newMember.type==="reitbeteiligung"&&<><label style={S.label}>Gehört zu Einsteller</label>
+            <select style={S.input} value={newMember.einstellerId} onChange={e=>setNewMember(p=>({...p,einstellerId:e.target.value}))}>
+              <option value="">— bitte wählen —</option>
+              {einstellerList.map(m=><option key={m.id} value={m.id}>{m.name} ({m.horse})</option>)}
+            </select></>}
+          <label style={S.label}>PIN (4-stellig)</label><input style={S.input} placeholder="z.B. 1234" maxLength={4} value={newMember.pin} onChange={e=>setNewMember(p=>({...p,pin:e.target.value.replace(/\D/,"")}))}/>
+          <label style={S.label}>Telefon</label><input style={S.input} placeholder="Optional" value={newMember.phone} onChange={e=>setNewMember(p=>({...p,phone:e.target.value}))}/>
+          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+            <button style={S.btn("light")} onClick={()=>setShowAddMember(false)}>Abbrechen</button>
+            <button style={S.btn("primary")} onClick={addMember}>Hinzufügen</button>
+          </div>
+        </div></div>
+      )}
+    </div>
+  );
+}
+
+function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts, finViewMonth, finViewYear, setFinViewMonth, setFinViewYear, editFee, setEditFee, editPay, setEditPay, addExtra, setAddExtra, extraForm, setExtraForm, saveFinMonth, saveBaseFee, calcTotal, getFinMonth, getBaseFee, showToast }) {
+  const einsteller = members.filter(m=>m.type==="einsteller");
+  const viewMonth  = finViewMonth;
+  const viewYear   = finViewYear;
+  const monthLabel = new Date(viewYear,viewMonth,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"});
+
+  const goMonth = (dir) => {
+    let m=viewMonth+dir, y=viewYear;
+    if(m>11){m=0;y++;} if(m<0){m=11;y--;}
+    setFinViewMonth(m); setFinViewYear(y);
+  };
+
+  const handleSaveFee = async (memberId) => {
+    const fee = parseFloat(editFee[memberId]);
+    if(isNaN(fee)) return;
+    await saveBaseFee(memberId, fee);
+    setEditFee(p=>({...p,[memberId]:undefined}));
+    showToast("💾 Grundgebühr gespeichert!");
+  };
+
+  const handleSavePayment = async (memberId) => {
+    const pay = parseFloat(editPay[memberId]);
+    if(isNaN(pay)) return;
+    const total = calcTotal(memberId, viewYear, viewMonth);
+    let diff = pay - total;
+    if(diff>5) diff=5; if(diff<-5) diff=-5;
+    await saveFinMonth(memberId, viewYear, viewMonth, {payment:pay});
+    let nm=viewMonth+1, ny=viewYear;
+    if(nm>11){nm=0;ny++;}
+    const nextFm = getFinMonth(memberId,ny,nm);
+    await saveFinMonth(memberId, ny, nm, {carryover: Number((nextFm.carryover||0) + diff)});
+    setEditPay(p=>({...p,[memberId]:undefined}));
+    showToast(diff!==0?`💾 Zahlung gespeichert · Übertrag: ${diff>0?"+":""}${diff.toFixed(2)}€`:"💾 Zahlung gespeichert!");
+  };
+
+  const handleAddExtra = async (memberId) => {
+    const amount = parseFloat(extraForm.amount);
+    if(isNaN(amount)||amount<=0) return;
+    const fm = getFinMonth(memberId, viewYear, viewMonth);
+    const newExtra = {id:Date.now(), type:extraForm.type, amount, desc:extraForm.desc};
+    await saveFinMonth(memberId, viewYear, viewMonth, {extras:[...(fm.extras||[]),newExtra]});
+    setAddExtra(null);
+    setExtraForm({type:"Decken waschen",amount:"5",desc:""});
+    showToast("✅ Zusatzdienst gebucht!");
+  };
+
+  const handleRemoveExtra = async (memberId, extraId) => {
+    const fm = getFinMonth(memberId, viewYear, viewMonth);
+    await saveFinMonth(memberId, viewYear, viewMonth, {extras:(fm.extras||[]).filter(e=>e.id!==extraId)});
+  };
+
+  if(!isAdmin) {
+    const m     = currentUser;
+    const fm    = getFinMonth(m.id, viewYear, viewMonth);
+    const base  = getBaseFee(m.id);
+    const extras= fm.extras||[];
+    const carry = Number(fm.carryover||0);
+    const total = calcTotal(m.id, viewYear, viewMonth);
+    const paid  = fm.payment!==null&&fm.payment!==undefined;
+    const diff  = paid ? Math.min(5,Math.max(-5, fm.payment - total)) : null;
+    return (
+      <div>
+        <div style={{...S.row,justifyContent:"space-between",margin:"14px 16px 0"}}>
+          <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(-1)}>‹</button>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#3d2b1f",fontWeight:600}}>{monthLabel}</div>
+          <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(1)}>›</button>
+        </div>
+        <div style={{...S.card,background:"linear-gradient(135deg,#3d2b1f,#7a5230)",color:"#f5e6c8"}}>
+          <div style={{fontSize:11,color:"#c8913a",marginBottom:4}}>Mein Konto · {monthLabel}</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:38,fontWeight:700}}>{total.toFixed(2)}€</div>
+          <div style={{fontSize:11,color:"#d4b88a",marginTop:4}}>
+            Grundgebühr {base.toFixed(2)}€
+            {extras.length>0&&` + Extras ${extras.reduce((a,e)=>a+Number(e.amount),0).toFixed(2)}€`}
+            {carry!==0&&` ${carry>0?"+":""} ${carry.toFixed(2)}€ Übertrag`}
+          </div>
+          <div style={{marginTop:12,padding:"8px 12px",borderRadius:10,background:paid?"rgba(255,255,255,.1)":"rgba(192,57,43,.3)"}}>
+            {paid
+              ? <span style={{fontSize:12,fontWeight:600}}>✓ Zahlung eingegangen: {Number(fm.payment).toFixed(2)}€{diff!==0?` · Übertrag nächsten Monat: ${diff>0?"+":""}${diff?.toFixed(2)}€`:""}</span>
+              : <span style={{fontSize:12,fontWeight:600,color:"#ffb3a7"}}>⏳ Zahlung noch ausstehend</span>}
+          </div>
+        </div>
+        <div style={S.card}>
+          <div style={{...S.row,justifyContent:"space-between",marginBottom:10}}>
+            <div style={S.cTitle}>Zusatzdienste</div>
+            <button style={{...S.btn("primary"),padding:"7px 12px",fontSize:12}} onClick={()=>{setAddExtra(m.id);setExtraForm({type:"Decken waschen",amount:"5",desc:""});}}>+ Hinzufügen</button>
+          </div>
+          {extras.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Keine Zusätze diesen Monat</div>}
+          {extras.map(e=>(
+            <div key={e.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:500}}>{e.type}</div>
+                {e.desc&&<div style={{fontSize:11,color:"#8b6040"}}>{e.desc}</div>}
+              </div>
+              <div style={{...S.row,gap:8}}>
+                <span style={{fontWeight:700,fontSize:13,color:"#c8913a"}}>{Number(e.amount).toFixed(2)}€</span>
+                {!paid&&<button onClick={()=>handleRemoveExtra(m.id,e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:2}}><Ic n="x" s={13}/></button>}
+              </div>
+            </div>
+          ))}
+          {carry!==0&&(
+            <div style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderTop:"1px solid #f0e8d8",marginTop:4}}>
+              <div style={{fontSize:12,color:"#8b6040"}}>Übertrag Vormonat</div>
+              <span style={{fontWeight:700,fontSize:13,color:carry>0?"#27ae60":"#c0392b"}}>{carry>0?"+":""}{carry.toFixed(2)}€</span>
+            </div>
+          )}
+          <div style={{...S.row,justifyContent:"space-between",padding:"10px 0 0",borderTop:"2px solid #e2d5c0",marginTop:6}}>
+            <div style={{fontWeight:700,fontSize:14}}>Gesamt</div>
+            <div style={{fontWeight:700,fontSize:18,color:"#3d2b1f"}}>{total.toFixed(2)}€</div>
+          </div>
+        </div>
+        {addExtra===m.id&&(
+          <div style={S.modal}><div style={S.mBox}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Zusatzdienst buchen</div>
+            <label style={S.label}>Typ</label>
+            <select style={S.input} value={extraForm.type} onChange={e=>setExtraForm(p=>({...p,type:e.target.value,amount:e.target.value==="Decken waschen"?"5":p.amount}))}>
+              <option>Decken waschen</option><option>Sonstiges</option>
+            </select>
+            <label style={S.label}>Betrag (€)</label>
+            <input style={S.input} type="number" step="0.50" min="0" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
+            <label style={S.label}>Beschreibung (optional)</label>
+            <input style={S.input} placeholder="z.B. 2× Decken" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
+            <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+              <button style={S.btn("light")} onClick={()=>setAddExtra(null)}>Abbrechen</button>
+              <button style={S.btn("primary")} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
+            </div>
+          </div></div>
+        )}
+      </div>
+    );
+  }
+
+  const totalOwed     = einsteller.reduce((a,m)=>a+calcTotal(m.id,viewYear,viewMonth),0);
+  const totalReceived = einsteller.reduce((a,m)=>{ const fm=getFinMonth(m.id,viewYear,viewMonth); return a+(fm.payment||0); },0);
+
+  return (
+    <div>
+      <div style={{...S.row,justifyContent:"space-between",margin:"14px 16px 0"}}>
+        <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(-1)}>‹</button>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#3d2b1f",fontWeight:600}}>{monthLabel}</div>
+        <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(1)}>›</button>
+      </div>
+      <div style={{...S.card,background:"linear-gradient(135deg,#3d2b1f,#7a5230)",color:"#f5e6c8"}}>
+        <div style={{fontSize:11,color:"#c8913a",marginBottom:4}}>Stallübersicht · {monthLabel}</div>
+        <div style={{...S.row,justifyContent:"space-between",alignItems:"flex-end"}}>
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:32,fontWeight:700}}>{totalReceived.toFixed(2)}€</div>
+            <div style={{fontSize:11,color:"#d4b88a"}}>eingegangen von {totalOwed.toFixed(2)}€</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:22,fontWeight:700,color:totalReceived>=totalOwed?"#a8e6cf":"#ffb3a7"}}>{einsteller.filter(m=>getFinMonth(m.id,viewYear,viewMonth).payment!==null&&getFinMonth(m.id,viewYear,viewMonth).payment!==undefined).length}/{einsteller.length}</div>
+            <div style={{fontSize:10,color:"#d4b88a"}}>bezahlt</div>
+          </div>
+        </div>
+      </div>
+      {einsteller.map(m=>{
+        const fm=getFinMonth(m.id,viewYear,viewMonth); const base=getBaseFee(m.id);
+        const extras=fm.extras||[]; const carry=Number(fm.carryover||0);
+        const total=calcTotal(m.id,viewYear,viewMonth); const paid=fm.payment!==null&&fm.payment!==undefined;
+        const diff=paid?Math.min(5,Math.max(-5,fm.payment-total)):null;
+        const editingFee=editFee[m.id]!==undefined; const editingPay=editPay[m.id]!==undefined;
+        return (
+          <div key={m.id} style={S.card}>
+            <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+              <div style={{...S.row,gap:10}}>
+                <div style={S.ava()}>{m.name.charAt(0)}</div>
+                <div>
+                  <div style={{fontWeight:600,fontSize:13}}>{m.name}</div>
+                  <div style={{fontSize:11,color:"#8b6040"}}>🐴 {m.horse}</div>
+                </div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontWeight:700,fontSize:18,color:"#3d2b1f"}}>{total.toFixed(2)}€</div>
+                <div style={{fontSize:10,color:paid?"#555":"#c0392b",fontWeight:600}}>{paid?`✓ ${Number(fm.payment).toFixed(2)}€ erhalten`:"⚠️ Offen"}</div>
+              </div>
+            </div>
+            <div style={{...S.row,justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f0e8d8"}}>
+              <div style={{fontSize:12,color:"#8b6040"}}>Grundgebühr</div>
+              {editingFee
+                ? <div style={{...S.row,gap:6}}>
+                    <input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.50" value={editFee[m.id]} onChange={e=>setEditFee(p=>({...p,[m.id]:e.target.value}))}/>
+                    <button style={{...S.btn("primary"),padding:"4px 10px",fontSize:11}} onClick={()=>handleSaveFee(m.id)}>OK</button>
+                    <button style={{...S.btn("light"),padding:"4px 8px",fontSize:11}} onClick={()=>setEditFee(p=>({...p,[m.id]:undefined}))}>✕</button>
+                  </div>
+                : <div style={{...S.row,gap:8}}>
+                    <span style={{fontWeight:600,fontSize:13}}>{base.toFixed(2)}€</span>
+                    <button onClick={()=>setEditFee(p=>({...p,[m.id]:String(base)}))} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#8b6040"}}>✏️</button>
+                  </div>}
+            </div>
+            <div style={{...S.row,justifyContent:"space-between",padding:"4px 0 4px",borderBottom:"1px solid #f5f0e8"}}>
+              <div style={{fontSize:11,color:"#8b6040",fontWeight:600}}>Zusätze</div>
+              <button style={{...S.btn("primary"),padding:"3px 10px",fontSize:11}} onClick={()=>{setAddExtra(m.id);setExtraForm({type:"Decken waschen",amount:"5",desc:""});}}>+ Hinzufügen</button>
+            </div>
+            {extras.map(e=>(
+              <div key={e.id} style={{...S.row,justifyContent:"space-between",padding:"5px 0 5px 10px",borderBottom:"1px solid #f5f0e8"}}>
+                <div style={{fontSize:11,color:"#8b6040"}}>+ {e.type}{e.desc?` · ${e.desc}`:""}</div>
+                <div style={{...S.row,gap:6}}>
+                  <span style={{fontSize:12,fontWeight:600,color:"#c8913a"}}>{Number(e.amount).toFixed(2)}€</span>
+                  <button onClick={()=>handleRemoveExtra(m.id,e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:2}}><Ic n="x" s={12}/></button>
+                </div>
+              </div>
+            ))}
+            {addExtra===m.id&&(
+              <div style={{background:"#faf6f0",borderRadius:8,padding:10,border:"1px solid #c8913a",margin:"6px 0"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#c8913a",marginBottom:8}}>Zusatzdienst hinzufügen</div>
+                <select style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} value={extraForm.type} onChange={e=>setExtraForm(p=>({...p,type:e.target.value,amount:e.target.value==="Decken waschen"?"5":p.amount}))}>
+                  <option>Decken waschen</option><option>Sonstiges</option>
+                </select>
+                <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} type="number" step="0.50" min="0" placeholder="Betrag (€)" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
+                <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} placeholder="Beschreibung (optional)" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
+                <div style={{...S.row,justifyContent:"flex-end",gap:6}}>
+                  <button style={{...S.btn("light"),padding:"5px 10px",fontSize:11}} onClick={()=>setAddExtra(null)}>Abbrechen</button>
+                  <button style={{...S.btn("primary"),padding:"5px 10px",fontSize:11}} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
+                </div>
+              </div>
+            )}
+            {carry!==0&&(
+              <div style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
+                <div style={{fontSize:11,color:"#8b6040"}}>Übertrag Vormonat</div>
+                <span style={{fontSize:12,fontWeight:600,color:carry>0?"#27ae60":"#c0392b"}}>{carry>0?"+":""}{carry.toFixed(2)}€</span>
+              </div>
+            )}
+            <div style={{...S.row,justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #e2d5c0"}}>
+              <div style={{fontWeight:700,fontSize:13}}>Gesamt fällig</div>
+              <div style={{fontWeight:700,fontSize:15}}>{total.toFixed(2)}€</div>
+            </div>
+            <div style={{...S.row,justifyContent:"space-between",padding:"8px 0 0"}}>
+              <div style={{fontSize:12,color:"#8b6040"}}>Zahlung eingetragen</div>
+              {editingPay
+                ? <div style={{...S.row,gap:6}}>
+                    <input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.50" value={editPay[m.id]} onChange={e=>setEditPay(p=>({...p,[m.id]:e.target.value}))} placeholder={total.toFixed(2)}/>
+                    <button style={{...S.btn("primary"),padding:"4px 10px",fontSize:11}} onClick={()=>handleSavePayment(m.id)}>OK</button>
+                    <button style={{...S.btn("light"),padding:"4px 8px",fontSize:11}} onClick={()=>setEditPay(p=>({...p,[m.id]:undefined}))}>✕</button>
+                  </div>
+                : <div style={{...S.row,gap:8}}>
+                    <span style={{fontWeight:600,fontSize:13,color:paid?"#555":"#c0392b"}}>{paid?`${Number(fm.payment).toFixed(2)}€`:"–"}</span>
+                    <button onClick={()=>setEditPay(p=>({...p,[m.id]:paid?String(fm.payment):String(total)}))} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#8b6040"}}>✏️</button>
+                  </div>}
+            </div>
+            {paid&&diff!==0&&(
+              <div style={{fontSize:11,color:diff>0?"#27ae60":"#c0392b",marginTop:4,fontWeight:600}}>
+                → Übertrag nächsten Monat: {diff>0?"+":""}{diff.toFixed(2)}€
+              </div>
+            )}
+            {!paid&&m.phone&&(
+              <a href={`https://wa.me/${m.phone.replace(/[^0-9]/g,"")}?text=Hallo%20${encodeURIComponent(m.name.split(" ")[0])}%2C%20deine%20Stallgeb%C3%BChr%20f%C3%BCr%20${encodeURIComponent(monthLabel)}%20betr%C3%A4gt%20${total.toFixed(2).replace(".",",")}%E2%82%AC.%20Bitte%20%C3%BCberweise%20zeitnah!%20%F0%9F%90%B4`}
+                style={{...S.btn("primary"),textDecoration:"none",padding:"6px 14px",fontSize:11,display:"inline-block",marginTop:10}}>
+                📲 WhatsApp Erinnerung
+              </a>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ══════════════════════════════════════════════════════════════════════════
 export default function StallApp() {
-  const [members,     setMembers]     = useState([]);
-  const [events,      setEvents]      = useState([]);
-  const [mistData,    setMistData]    = useState({});
-  const [vacations,   setVacations]   = useState({});
-  const [loading,     setLoading]     = useState(true);
-  const [syncing,     setSyncing]     = useState(false);
-  const [weekOffset,  setWeekOffset]  = useState(0);
-  const [tab,         setTab]         = useState("home");
-  const [currentUser, setCurrentUser] = useState(null);
-  const [loginStep,   setLoginStep]   = useState("select");
-  const [selName,     setSelName]     = useState("");
-  const [pinInput,    setPinInput]    = useState("");
-  const [pinError,    setPinError]    = useState(false);
-  const [showAddEvent,    setShowAddEvent]    = useState(false);
-  const [showAddMember,   setShowAddMember]   = useState(false);
-  const [showAddVacation, setShowAddVacation] = useState(false);
-  const [vacTargetId,     setVacTargetId]     = useState(null);
-  const [newEvent,    setNewEvent]    = useState({type:"Tierarzt",date:"",time:"",note:""});
-  const [newMember,   setNewMember]   = useState({name:"",horse:"",type:"einsteller",pin:"",phone:"",einstellerId:""});
-  const [newVac,      setNewVac]      = useState({from:"",to:"",note:""});
-  const [toast,       setToast]       = useState(null);
-  const [finAccounts, setFinAccounts] = useState({}); // { memberId: {baseFee} }
-  const [finMonths,   setFinMonths]   = useState({}); // { "memberId_YYYY-MM": {extras,payment,carryover,notes} }
-  // MembersScreen state (hoisted to prevent remount on keystroke)
-  const [editId,      setEditId]      = useState(null);
-  const [editData,    setEditData]    = useState({});
-  const [pinMode,     setPinMode]     = useState(false);
-  const [pins,        setPins]        = useState({old:"",n1:"",n2:""});
-  const [pinErr,      setPinErr]      = useState("");
-  // FinanzenScreen state (hoisted)
-  const [finViewMonth,setFinViewMonth]= useState(()=>new Date().getMonth());
-  const [finViewYear, setFinViewYear] = useState(()=>new Date().getFullYear());
-  const [editFee,     setEditFee]     = useState({});
-  const [editPay,     setEditPay]     = useState({});
-  const [addExtra,    setAddExtra]    = useState(null);
-  const [extraForm,   setExtraForm]   = useState({type:"Decken waschen",amount:"5",desc:""});
-  // HomeScreen mini calendar
-  const [selDay,      setSelDay]      = useState(null);
+  const [members,        setMembers]        = useState([]);
+  const [events,         setEvents]         = useState([]);
+  const [mistData,       setMistData]       = useState({});
+  const [vacations,      setVacations]      = useState({});
+  const [loading,        setLoading]        = useState(true);
+  const [syncing,        setSyncing]        = useState(false);
+  const [weekOffset,     setWeekOffset]     = useState(0);
+  const [tab,            setTab]            = useState("home");
+  const [currentUser,    setCurrentUser]    = useState(null);
+  const [loginStep,      setLoginStep]      = useState("select");
+  const [selName,        setSelName]        = useState("");
+  const [pinInput,       setPinInput]       = useState("");
+  const [pinError,       setPinError]       = useState(false);
+  const [showAddEvent,   setShowAddEvent]   = useState(false);
+  const [showAddMember,  setShowAddMember]  = useState(false);
+  const [showAddVacation,setShowAddVacation]= useState(false);
+  const [vacTargetId,    setVacTargetId]    = useState(null);
+  const [newEvent,       setNewEvent]       = useState({type:"Tierarzt",date:"",time:"",note:""});
+  const [newMember,      setNewMember]      = useState({name:"",horse:"",type:"einsteller",pin:"",phone:"",einstellerId:""});
+  const [newVac,         setNewVac]         = useState({from:"",to:"",note:""});
+  const [toast,          setToast]          = useState(null);
+  const [finAccounts,    setFinAccounts]    = useState({});
+  const [finMonths,      setFinMonths]      = useState({});
+  const [editId,         setEditId]         = useState(null);
+  const [editData,       setEditData]       = useState({});
+  const [pinMode,        setPinMode]        = useState(false);
+  const [pins,           setPins]           = useState({old:"",n1:"",n2:""});
+  const [pinErr,         setPinErr]         = useState("");
+  const [finViewMonth,   setFinViewMonth]   = useState(()=>new Date().getMonth());
+  const [finViewYear,    setFinViewYear]    = useState(()=>new Date().getFullYear());
+  const [editFee,        setEditFee]        = useState({});
+  const [editPay,        setEditPay]        = useState({});
+  const [addExtra,       setAddExtra]       = useState(null);
+  const [extraForm,      setExtraForm]      = useState({type:"Decken waschen",amount:"5",desc:""});
+  const [selDay,         setSelDay]         = useState(null);
 
   const weekDates = getWeekDates(weekOffset);
   const isAdmin   = currentUser?.type==="admin";
@@ -191,58 +1063,35 @@ export default function StallApp() {
 
   const showToast = (msg, color="#c8913a") => { setToast({msg,color}); setTimeout(()=>setToast(null),2800); };
 
-  // ── Load all data from Supabase ───────────────────────────────────────────
   const loadAll = useCallback(async () => {
     try {
-      // Load members
       let { data: mRows } = await sb.from("members").select("*").order("id");
-      if(!mRows||mRows.length===0){
-        // Seed initial members
-        await sb.from("members").insert(SEED_MEMBERS);
-        mRows = SEED_MEMBERS;
-      }
+      if(!mRows||mRows.length===0){ await sb.from("members").insert(SEED_MEMBERS); mRows=SEED_MEMBERS; }
       setMembers(mRows.map(dbToMember));
 
-      // Load events
       let { data: eRows } = await sb.from("events").select("*").order("date");
-      if(!eRows||eRows.length===0){
-        await sb.from("events").insert(SEED_EVENTS);
-        eRows = SEED_EVENTS;
-      }
+      if(!eRows||eRows.length===0){ await sb.from("events").insert(SEED_EVENTS); eRows=SEED_EVENTS; }
       setEvents(eRows.map(dbToEvent));
 
-      // Load mist_data
       const { data: mistRows } = await sb.from("mist_data").select("*");
       const mistObj = {};
-      (mistRows||[]).forEach(r=>{
-        if(!mistObj[r.day_key]) mistObj[r.day_key]=[];
-        mistObj[r.day_key].push(r.member_id);
-      });
+      (mistRows||[]).forEach(r=>{ if(!mistObj[r.day_key]) mistObj[r.day_key]=[]; mistObj[r.day_key].push(r.member_id); });
       setMistData(mistObj);
 
-      // Load vacations
       const { data: vacRows } = await sb.from("vacations").select("*");
       const vacObj = {};
-      (vacRows||[]).forEach(r=>{
-        if(!vacObj[r.member_id]) vacObj[r.member_id]=[];
-        vacObj[r.member_id].push(dbToVac(r));
-      });
+      (vacRows||[]).forEach(r=>{ if(!vacObj[r.member_id]) vacObj[r.member_id]=[]; vacObj[r.member_id].push(dbToVac(r)); });
       setVacations(vacObj);
 
-      // Load finance accounts
       const { data: faRows } = await sb.from("finance_accounts").select("*");
       const faObj = {};
-      (faRows||[]).forEach(r=>{ faObj[r.member_id] = { id:r.id, baseFee:r.base_fee||0 }; });
+      (faRows||[]).forEach(r=>{ faObj[r.member_id]={id:r.id,baseFee:r.base_fee||0}; });
       setFinAccounts(faObj);
 
-      // Load finance months
       const { data: fmRows } = await sb.from("finance_months").select("*");
       const fmObj = {};
-      (fmRows||[]).forEach(r=>{
-        fmObj[r.member_id+"_"+r.month] = { id:r.id, extras:r.extras||[], payment:r.payment, carryover:r.carryover||0, notes:r.notes||"" };
-      });
+      (fmRows||[]).forEach(r=>{ fmObj[r.member_id+"_"+r.month]={id:r.id,extras:r.extras||[],payment:r.payment,carryover:r.carryover||0,notes:r.notes||""}; });
       setFinMonths(fmObj);
-
     } catch(e) {
       showToast("⚠️ Verbindungsfehler – bitte neu laden","#c0392b");
     } finally {
@@ -252,7 +1101,6 @@ export default function StallApp() {
 
   useEffect(()=>{ loadAll(); },[loadAll]);
 
-  // ── Realtime subscription ─────────────────────────────────────────────────
   useEffect(()=>{
     const channel = sb.channel("stallbuch-changes")
       .on("postgres_changes",{event:"*",schema:"public",table:"mist_data"},()=>loadAll())
@@ -265,10 +1113,8 @@ export default function StallApp() {
     return ()=>sb.removeChannel(channel);
   },[loadAll]);
 
-  // ── Manual refresh ────────────────────────────────────────────────────────
   const manualRefresh = async () => { setSyncing(true); await loadAll(); setSyncing(false); showToast("🔄 Aktualisiert!"); };
 
-  // ── Login ─────────────────────────────────────────────────────────────────
   const handlePinDigit = k => {
     if(k==="⌫"){ setPinInput(p=>p.slice(0,-1)); setPinError(false); return; }
     if(k===""||pinInput.length>=4) return;
@@ -281,110 +1127,73 @@ export default function StallApp() {
   };
   const handleLogout = () => { setCurrentUser(null); setLoginStep("select"); setSelName(""); setPinInput(""); setTab("home"); };
 
-  // ── Mist toggle ───────────────────────────────────────────────────────────
-  // ── Mist locking rules (for non-admins) ──────────────────────────────────
-  // 1. Only current month and next month allowed (max 1 month ahead)
-  // 2. Current month is locked after the 7th
   const isMistLocked = (dayKey) => {
     if(isAdmin) return false;
-    // Parse purely from string to avoid timezone issues: "YYYY-MM-DD"
-    const [dy, dm] = dayKey.split("-").map(Number);
-    const dayYM = dy * 12 + (dm - 1);
-    const nowYM = today.getFullYear() * 12 + today.getMonth();
-    // More than 1 month ahead → locked
-    if(dayYM > nowYM + 1) return true;
-    // Past months → locked
-    if(dayYM < nowYM) return true;
-    // Current month + today is past the 7th → locked
-    if(dayYM === nowYM && today.getDate() > 7) return true;
+    const [dy,dm] = dayKey.split("-").map(Number);
+    const dayYM = dy*12+(dm-1); const nowYM = today.getFullYear()*12+today.getMonth();
+    if(dayYM>nowYM+1) return true;
+    if(dayYM<nowYM)   return true;
+    if(dayYM===nowYM&&today.getDate()>7) return true;
     return false;
   };
 
   const toggleMist = async (dayKey, memberId) => {
     if(!currentUser) return;
-    if(!isAdmin && currentUser.id!==memberId) return;
-    // Check locking rules for non-admins
-    if(!isAdmin && isMistLocked(dayKey)){
-      if(today.getDate() > 7){
-        showToast("🔒 Eintragungen für diesen Monat sind nach dem 7. gesperrt","#c0392b");
-      } else {
-        showToast("🔒 Nur bis einen Monat im Voraus möglich","#c0392b");
-      }
+    if(!isAdmin&&currentUser.id!==memberId) return;
+    if(!isAdmin&&isMistLocked(dayKey)){
+      showToast(today.getDate()>7?"🔒 Eintragungen für diesen Monat sind nach dem 7. gesperrt":"🔒 Nur bis einen Monat im Voraus möglich","#c0392b");
       return;
     }
-    const daySlots = mistData[dayKey]||[];
-    const alreadyChecked = daySlots.includes(memberId);
+    const daySlots=mistData[dayKey]||[]; const alreadyChecked=daySlots.includes(memberId);
     if(!alreadyChecked){
-      if(daySlots.length>0){ showToast("⚠️ Dieser Tag ist bereits vergeben – wer zuerst kommt, mahlt zuerst!","#c0392b"); return; }
+      if(daySlots.length>0){ showToast("⚠️ Dieser Tag ist bereits vergeben!","#c0392b"); return; }
       if(isOnVacationDay(memberId,dayKey,vacations)){ showToast("🌴 Urlaub eingetragen – kein Misten möglich.","#16a085"); return; }
     }
-    // Optimistic update
     setMistData(prev=>{ const day=prev[dayKey]||[]; return {...prev,[dayKey]:day.includes(memberId)?day.filter(x=>x!==memberId):[...day,memberId]}; });
-    // DB update
-    if(alreadyChecked){
-      await sb.from("mist_data").delete().eq("day_key",dayKey).eq("member_id",memberId);
-    } else {
-      await sb.from("mist_data").insert({day_key:dayKey,member_id:memberId});
-    }
+    if(alreadyChecked) await sb.from("mist_data").delete().eq("day_key",dayKey).eq("member_id",memberId);
+    else await sb.from("mist_data").insert({day_key:dayKey,member_id:memberId});
   };
 
-  // ── Vacations ─────────────────────────────────────────────────────────────
   const openAddVacation = (memberId) => { setVacTargetId(memberId); setNewVac({from:"",to:"",note:""}); setShowAddVacation(true); };
   const addVacation = async () => {
     if(!newVac.from||!newVac.to||newVac.from>newVac.to){ showToast("Bitte gültiges Datum wählen","#c0392b"); return; }
-    const row = { id:Date.now(), member_id:vacTargetId, from_date:newVac.from, to_date:newVac.to, note:newVac.note };
-    setVacations(prev=>({ ...prev, [vacTargetId]:[...(prev[vacTargetId]||[]),dbToVac(row)] }));
+    const row={id:Date.now(),member_id:vacTargetId,from_date:newVac.from,to_date:newVac.to,note:newVac.note};
+    setVacations(prev=>({...prev,[vacTargetId]:[...(prev[vacTargetId]||[]),dbToVac(row)]}));
     await sb.from("vacations").insert(row);
-    setShowAddVacation(false);
-    showToast("🌴 Urlaub eingetragen!");
+    setShowAddVacation(false); showToast("🌴 Urlaub eingetragen!");
   };
   const deleteVacation = async (memberId, vacId) => {
-    setVacations(prev=>({ ...prev, [memberId]:(prev[memberId]||[]).filter(v=>v.id!==vacId) }));
+    setVacations(prev=>({...prev,[memberId]:(prev[memberId]||[]).filter(v=>v.id!==vacId)}));
     await sb.from("vacations").delete().eq("id",vacId);
   };
 
-  // ── Events ────────────────────────────────────────────────────────────────
   const EVENT_TYPES  = ["Tierarzt","Hufschmied","Impfen","Sonstiges"];
   const EVENT_COLORS = { Tierarzt:"#c0392b", Hufschmied:"#8B6914", Impfen:"#27ae60", Sonstiges:"#7f8c8d" };
   const addEvent = async () => {
     if(!newEvent.date) return;
-    const row = {...newEvent, id:Date.now(), color:EVENT_COLORS[newEvent.type]||"#7f8c8d", created_by:currentUser.name};
+    const row={...newEvent,id:Date.now(),color:EVENT_COLORS[newEvent.type]||"#7f8c8d",created_by:currentUser.name};
     setEvents(p=>[...p,dbToEvent(row)]);
     await sb.from("events").insert(row);
     setNewEvent({type:"Tierarzt",date:"",time:"",note:""}); setShowAddEvent(false);
   };
-  const deleteEvent = async id => {
-    setEvents(p=>p.filter(e=>e.id!==id));
-    await sb.from("events").delete().eq("id",id);
-  };
+  const deleteEvent = async id => { setEvents(p=>p.filter(e=>e.id!==id)); await sb.from("events").delete().eq("id",id); };
 
-  // ── Members ───────────────────────────────────────────────────────────────
   const addMember = async () => {
     if(!newMember.name||!newMember.pin) return;
-    const row = { id:Date.now(), name:newMember.name, horse:newMember.horse, type:newMember.type, pin:newMember.pin, phone:newMember.phone, paid:newMember.type==="reitbeteiligung"?null:false, einsteller_id:newMember.einstellerId?parseInt(newMember.einstellerId):null };
+    const row={id:Date.now(),name:newMember.name,horse:newMember.horse,type:newMember.type,pin:newMember.pin,phone:newMember.phone,paid:newMember.type==="reitbeteiligung"?null:false,einsteller_id:newMember.einstellerId?parseInt(newMember.einstellerId):null};
     setMembers(p=>[...p,dbToMember(row)]);
     await sb.from("members").insert(row);
     setNewMember({name:"",horse:"",type:"einsteller",pin:"",phone:"",einstellerId:""}); setShowAddMember(false);
     showToast("✅ Mitglied hinzugefügt!");
   };
-  const deleteMember = async id => {
-    setMembers(p=>p.filter(m=>m.id!==id));
-    await sb.from("members").delete().eq("id",id);
-  };
-  const togglePaid = async id => {
-    const m = members.find(x=>x.id===id);
-    const newPaid = !m.paid;
-    setMembers(p=>p.map(x=>x.id===id?{...x,paid:newPaid}:x));
-    await sb.from("members").update({paid:newPaid}).eq("id",id);
-  };
+  const deleteMember = async id => { setMembers(p=>p.filter(m=>m.id!==id)); await sb.from("members").delete().eq("id",id); };
   const saveMemberEdit = async (id, editData) => {
-    const updates = { name:editData.name, horse:editData.horse, phone:editData.phone, pin:editData.pin, type:editData.type, paid:editData.type==="reitbeteiligung"?null:(members.find(m=>m.id===id)?.paid??false), einsteller_id:editData.einstellerId?parseInt(editData.einstellerId):null };
+    const updates={name:editData.name,horse:editData.horse,phone:editData.phone,pin:editData.pin,type:editData.type,paid:editData.type==="reitbeteiligung"?null:(members.find(m=>m.id===id)?.paid??false),einsteller_id:editData.einstellerId?parseInt(editData.einstellerId):null};
     setMembers(p=>p.map(m=>m.id===id?{...m,...dbToMember({id,...updates,einsteller_id:updates.einsteller_id})}:m));
     await sb.from("members").update(updates).eq("id",id);
     showToast("✅ Daten gespeichert!");
   };
 
-  // ── Derived ───────────────────────────────────────────────────────────────
   const einstellerList = members.filter(m=>m.type==="einsteller"||m.type==="admin");
   const upcomingEvents = [...events].sort((a,b)=>a.date.localeCompare(b.date)).filter(e=>e.date>=dk(today)).slice(0,5);
   const unpaid         = members.filter(m=>m.type==="einsteller"&&!m.paid);
@@ -398,9 +1207,28 @@ export default function StallApp() {
     return null;
   };
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // LOADING SCREEN
-  // ══════════════════════════════════════════════════════════════════════════
+  const fmKey       = (memberId,year,month) => memberId+"_"+year+"-"+String(month+1).padStart(2,"0");
+  const getFinMonth = (memberId,year,month) => finMonths[fmKey(memberId,year,month)]||{extras:[],payment:null,carryover:0,notes:""};
+  const getBaseFee  = (memberId) => finAccounts[memberId]?.baseFee||0;
+  const calcTotal   = (memberId,year,month) => {
+    const fm=getFinMonth(memberId,year,month); const base=getBaseFee(memberId);
+    return base+(fm.extras||[]).reduce((a,e)=>a+Number(e.amount),0)+Number(fm.carryover||0);
+  };
+  const saveFinMonth = async (memberId,year,month,data) => {
+    const key=fmKey(memberId,year,month); const mon=year+"-"+String(month+1).padStart(2,"0");
+    const existing=finMonths[key];
+    const row={member_id:memberId,month:mon,extras:data.extras??existing?.extras??[],payment:data.payment??existing?.payment??null,carryover:data.carryover??existing?.carryover??0,notes:data.notes??existing?.notes??""};
+    setFinMonths(prev=>({...prev,[key]:{...existing,...data}}));
+    if(existing?.id) await sb.from("finance_months").update(row).eq("id",existing.id);
+    else { const newRow={...row,id:Date.now()}; setFinMonths(prev=>({...prev,[key]:{...newRow}})); await sb.from("finance_months").insert(newRow); }
+  };
+  const saveBaseFee = async (memberId,fee) => {
+    const existing=finAccounts[memberId];
+    setFinAccounts(prev=>({...prev,[memberId]:{...prev[memberId],baseFee:fee}}));
+    if(existing?.id) await sb.from("finance_accounts").update({base_fee:fee}).eq("id",existing.id);
+    else { const row={id:Date.now(),member_id:memberId,base_fee:fee}; setFinAccounts(prev=>({...prev,[memberId]:{id:row.id,baseFee:fee}})); await sb.from("finance_accounts").insert(row); }
+  };
+
   if(loading) return (
     <div style={{...S.root,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
       <div style={{fontSize:52,marginBottom:16}}>🐴</div>
@@ -411,9 +1239,6 @@ export default function StallApp() {
     </div>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // LOGIN
-  // ══════════════════════════════════════════════════════════════════════════
   if(!currentUser) return (
     <div style={{...S.root,display:"flex",flexDirection:"column"}}>
       <div style={{background:"linear-gradient(160deg,#3d2b1f,#7a5230)",padding:"50px 24px 36px",textAlign:"center"}}>
@@ -464,1036 +1289,11 @@ export default function StallApp() {
     </div>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // HOME
-  // ══════════════════════════════════════════════════════════════════════════
-  const HomeScreen = () => {
-    const isE = currentUser.type==="einsteller"||(currentUser.type==="admin"&&currentUser.horse);
-    const mQ  = isE ? getMonthlyQuota(currentUser,members,vacations,curYear,curMonth) : 0;
-    const mC  = isE ? countMistMonth(mistData,currentUser.id,curYear,curMonth) : 0;
-    const myVacLabel = getVacationLabel(currentUser.id);
-    return (
-      <div>
-        <div style={{background:"linear-gradient(135deg,#3d2b1f,#7a5230)",margin:"14px 16px 0",borderRadius:16,padding:"20px 18px",color:"#f5e6c8",position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",right:-10,top:-10,opacity:.1,fontSize:90}}>🐴</div>
-          <div style={{fontSize:11,color:"#c8913a",marginBottom:2}}>{fmtD(today)}</div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,lineHeight:1.2}}>Hallo, {currentUser.name.split(" ")[0]}!</div>
-          <div style={{fontSize:11,color:"#d4b88a",marginTop:6}}>
-            {currentUser.type==="admin"?"👑 Admin":currentUser.type==="einsteller"?"🐴 Einsteller":"🤝 Reitbeteiligung"}
-            {currentUser.horse?` · ${currentUser.horse}`:""}
-          </div>
-          {myVacLabel&&<div style={{marginTop:8,background:"rgba(22,160,133,.25)",borderRadius:8,padding:"5px 10px",fontSize:11,color:"#a8e6cf"}}>{myVacLabel}</div>}
-        </div>
-        {isAdmin&&mistWarnings.length>0&&(
-          <div style={{...S.card,background:"#fff8ec",border:"1.5px solid #f5c842"}}>
-            <div style={S.row}><Ic n="warn"/><div>
-              <div style={{fontSize:12,fontWeight:700,color:"#8B6914"}}>⚠️ Mist-Erinnerung</div>
-              <div style={{fontSize:11,color:"#6b4c2a",marginTop:2}}>{mistWarnings.map(m=>m.name).join(", ")} — Monatspflicht noch nicht erfüllt</div>
-            </div></div>
-          </div>
-        )}
-        {isAdmin&&unpaid.length>0&&(
-          <div style={{...S.card,background:"#fff5f5",border:"1.5px solid #f5c0c0"}}>
-            <div style={S.row}><span style={{color:"#c0392b"}}><Ic n="warn"/></span><div>
-              <div style={{fontSize:12,fontWeight:700,color:"#922b21"}}>💰 Offene Zahlungen</div>
-              <div style={{fontSize:11,color:"#7b241c",marginTop:2}}>{unpaid.map(m=>m.name).join(", ")} — Stallgebühr ausstehend</div>
-            </div></div>
-          </div>
-        )}
-        {isAdmin&&(
-          <div style={S.card}>
-            <div style={S.cTitle}>💰 Zahlungsübersicht</div>
-            {members.filter(m=>m.type==="einsteller").map(m=>{
-              const fm=getFinMonth(m.id,curYear,curMonth);
-              const total=calcTotal(m.id,curYear,curMonth);
-              const paid=fm.payment!==null&&fm.payment!==undefined;
-              return (
-                <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:500}}>{m.name}</div>
-                    <div style={{fontSize:10,color:"#8b6040"}}>🐴 {m.horse} · {total.toFixed(2)}€</div>
-                  </div>
-                  {paid
-                    ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ {Number(fm.payment).toFixed(2)}€</span>
-                    : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Offen</span>}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {isE&&(
-          <div style={S.card}>
-            <div style={S.cTitle}>Mein Überblick</div>
-            {/* Mistdienst */}
-            <div style={{...S.row,justifyContent:"space-between",marginBottom:8}}>
-              <div>
-                <div style={{fontSize:13}}>🧹 Mistdienst: <b style={{color:mC>=mQ?"#27ae60":"#c0392b"}}>{mC}/{mQ}×</b></div>
-                <div style={{fontSize:11,color:"#aaa",marginTop:2}}>Aufgeteilt mit {members.filter(m=>m.einstellerId===currentUser.id).length} Reitbet.</div>
-              </div>
-              {mC>=mQ?<span style={{color:"#27ae60",fontWeight:700,fontSize:12}}>✓ Erledigt!</span>:<span style={{color:"#c0392b",fontWeight:700,fontSize:12}}>Noch offen</span>}
-            </div>
-            {/* Zahlungsstatus */}
-            {currentUser.type!=="reitbeteiligung"&&(()=>{
-              const hFm    = getFinMonth(currentUser.id, curYear, curMonth);
-              const hTotal = calcTotal(currentUser.id, curYear, curMonth);
-              const hPaid  = hFm.payment!==null&&hFm.payment!==undefined;
-              return (
-                <div style={{...S.row,justifyContent:"space-between",marginTop:4,paddingTop:10,borderTop:"1px solid #f0e8d8"}}>
-                  <div>
-                    <div style={{fontSize:13}}>💰 Stallgebühr {today.toLocaleDateString("de-DE",{month:"long"})}</div>
-                    <div style={{fontSize:11,color:"#aaa",marginTop:1}}>{hTotal.toFixed(2)}€ fällig</div>
-                  </div>
-                  {hPaid
-                    ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ {Number(hFm.payment).toFixed(2)}€</span>
-                    : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Ausstehend</span>}
-                </div>
-              );
-            })()}
-
-          </div>
-        )}
-
-        {/* ── Mini Month Calendar ── */}
-        {(()=>{
-          const calYear  = today.getFullYear();
-          const calMonth = today.getMonth();
-          const calDays  = [];
-          const d = new Date(calYear, calMonth, 1);
-          while(d.getMonth()===calMonth){ calDays.push(new Date(d)); d.setDate(d.getDate()+1); }
-          const leadingBlanks = (new Date(calYear,calMonth,1).getDay()||7)-1;
-
-          const getDayInfo = (day) => {
-            const k = dkl(day);
-            const myMist  = (mistData[k]||[]).includes(currentUser.id);
-            const myVac   = isOnVacationDay(currentUser.id, k, vacations);
-            const dayEvts = events.filter(e=>e.date===k);
-            return { k, myMist, myVac, dayEvts };
-          };
-
-          const getDots = (info, isSelected) => {
-            const dots = [];
-            if(info.myVac)  dots.push("#16a085");
-            if(info.myMist) dots.push("#c8913a");
-            info.dayEvts.forEach(e=>dots.push(e.color));
-            return dots.map((c,i)=>(
-              <div key={i} style={{width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":c,flexShrink:0}}/>
-            ));
-          };
-
-          const selInfo = selDay ? getDayInfo(selDay) : null;
-
-          return (
-            <div style={S.card}>
-              <div style={S.cTitle}>📅 {today.toLocaleDateString("de-DE",{month:"long",year:"numeric"})}</div>
-              {/* Weekday headers */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>
-                {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
-                  <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700}}>{d}</div>
-                ))}
-              </div>
-              {/* Day cells */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
-                {Array.from({length:leadingBlanks}).map((_,i)=><div key={"b"+i}/>)}
-                {calDays.map(day=>{
-                  const info       = getDayInfo(day);
-                  const isToday    = info.k===dkl(today);
-                  const isSelected = selDay && dkl(day)===dkl(selDay);
-                  const hasContent = info.myMist||info.myVac||info.dayEvts.length>0;
-                  const dots       = getDots(info, isSelected);
-                  return (
-                    <div key={info.k}
-                      onClick={()=>hasContent&&setSelDay(prev=>prev&&dkl(prev)===info.k?null:day)}
-                      style={{
-                        aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",
-                        alignItems:"center",justifyContent:"center",gap:2,
-                        cursor:hasContent?"pointer":"default",
-                        background:isSelected?"#3d2b1f":info.myMist?"#f5e8d4":info.myVac?"#e8f8f5":"#fff",
-                        border:isToday?"2px solid #c8913a":isSelected?"2px solid #3d2b1f":"1px solid #ede5d5",
-                        transition:"all .15s"
-                      }}>
-                      <div style={{fontSize:10,fontWeight:isToday?700:400,color:isSelected?"#fff":info.myMist?"#c8913a":"#2c2416"}}>{day.getDate()}</div>
-                      {dots.length>0&&<div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>}
-                    </div>
-                  );
-                })}
-              </div>
-              {/* Legend */}
-              <div style={{display:"flex",gap:10,marginTop:10,fontSize:10,color:"#aaa",flexWrap:"wrap"}}>
-                <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c8913a",display:"inline-block"}}/> Mein Mist</span>
-                <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#16a085",display:"inline-block"}}/> Urlaub</span>
-                <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c0392b",display:"inline-block"}}/> Termin</span>
-              </div>
-              {/* Day detail popup */}
-              {selInfo&&(
-                <div style={{marginTop:12,background:"#faf6f0",borderRadius:10,padding:"10px 14px",border:"1px solid #e2d5c0"}}>
-                  <div style={{fontWeight:700,fontSize:12,color:"#3d2b1f",marginBottom:8}}>
-                    {selDay.toLocaleDateString("de-DE",{weekday:"long",day:"2-digit",month:"long"})}
-                  </div>
-                  {selInfo.myVac&&(
-                    <div style={{...S.row,gap:8,marginBottom:6}}>
-                      <span style={{fontSize:14}}>🌴</span>
-                      <span style={{fontSize:12,color:"#16a085",fontWeight:600}}>Dein Urlaub</span>
-                    </div>
-                  )}
-                  {selInfo.myMist&&(
-                    <div style={{...S.row,gap:8,marginBottom:6}}>
-                      <span style={{width:10,height:10,borderRadius:"50%",background:"#c8913a",flexShrink:0}}/>
-                      <span style={{fontSize:12,color:"#c8913a",fontWeight:600}}>🧹 Dein Mistdienst</span>
-                    </div>
-                  )}
-                  {selInfo.dayEvts.map(e=>(
-                    <div key={e.id} style={{...S.row,gap:8,marginBottom:6}}>
-                      <span style={{width:10,height:10,borderRadius:"50%",background:e.color,flexShrink:0}}/>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:600,color:"#2c2416"}}>{e.type}</div>
-                        <div style={{fontSize:10,color:"#8b6040"}}>
-                          {e.time?`🕐 ${e.time} Uhr · `:""}
-                          {e.note||""}
-                          {e.createdBy?` · 👤 ${e.createdBy}`:""}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
-        <div style={S.card}>
-          <div style={S.cTitle}>Nächste Termine</div>
-          {upcomingEvents.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Keine Termine geplant</div>}
-          {upcomingEvents.map(e=>(
-            <div key={e.id} style={{...S.row,marginBottom:10}}>
-              <div style={{width:4,height:36,borderRadius:4,background:e.color,flexShrink:0}}/>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:600,fontSize:13}}>{e.type}</div>
-                <div style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(e.date+"T00:00:00"))}{e.time?` · ${e.time} Uhr`:""}{e.note?` · ${e.note}`:""}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-      </div>
-    );
-  };
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // CALENDAR
-  // ══════════════════════════════════════════════════════════════════════════
-  const CalendarScreen = () => {
-    const canAdd = isAdmin || currentUser.type==="einsteller";
-    return (
-    <div>
-      <div style={S.card}>
-        <div style={{...S.row,justifyContent:"space-between",marginBottom:14}}>
-          <div style={S.cTitle}>Termine</div>
-          {canAdd&&<button style={{...S.btn("primary"),padding:"8px 12px"}} onClick={()=>setShowAddEvent(true)}><Ic n="plus" s={16}/></button>}
-        </div>
-        {!canAdd&&<div style={{background:"#f5f0e8",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#8b6040",marginBottom:12}}>📅 Termine werden von Einstellern und Admin verwaltet</div>}
-        {[...events].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
-          const canDelete = isAdmin || e.createdBy===currentUser.name;
-          return (
-          <div key={e.id} style={{display:"flex",gap:10,marginBottom:12,alignItems:"flex-start"}}>
-            <div style={{width:5,borderRadius:4,background:e.color,alignSelf:"stretch",flexShrink:0,minHeight:40}}/>
-            <div style={{flex:1}}>
-              <div style={{...S.row,justifyContent:"space-between"}}>
-                <span style={{fontWeight:600,fontSize:14}}>{e.type}</span>
-                <span style={{fontSize:10,color:"#8b6040"}}>{new Date(e.date+"T00:00:00").toLocaleDateString("de-DE",{day:"2-digit",month:"short",year:"numeric"})}</span>
-              </div>
-              {e.time&&<div style={{fontSize:11,color:"#8b6040",marginTop:2}}>🕐 {e.time} Uhr</div>}
-              {e.note&&<div style={{fontSize:11,color:"#666",marginTop:2}}>{e.note}</div>}
-              {e.createdBy&&<div style={{fontSize:10,color:"#b89060",marginTop:3}}>👤 {e.createdBy}</div>}
-            </div>
-            {canDelete&&<button onClick={()=>deleteEvent(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="x" s={14}/></button>}
-          </div>
-        );})}
-      </div>
-        {/* ── Urlaube ── */}
-        <div style={S.card}>
-          <div style={{...S.row,justifyContent:"space-between",marginBottom:10}}>
-            <div style={S.cTitle}>🌴 Urlaube</div>
-            <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}} onClick={()=>openAddVacation(currentUser.id)}>+ Eigenen eintragen</button>
-          </div>
-          {(isAdmin?[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")]:[currentUser]).map(m=>{
-            const vacs=vacations[m.id]||[]; const canEdit=isAdmin||currentUser.id===m.id;
-            if(vacs.length===0) return null;
-            return vacs.map(v=>(
-              <div key={v.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f5f0e8"}}>
-                <div>
-                  {isAdmin&&<span style={{fontSize:12,fontWeight:600}}>{m.name.split(" ")[0]} · </span>}
-                  <span style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(v.from+"T00:00:00"))} – {fmtSh(new Date(v.to+"T00:00:00"))}</span>
-                  {v.note&&<span style={{fontSize:10,color:"#aaa"}}> · {v.note}</span>}
-                </div>
-                {canEdit&&<button onClick={()=>deleteVacation(m.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>}
-              </div>
-            ));
-          })}
-          {isAdmin&&(
-            <div style={{marginTop:8}}>
-              <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Urlaub für andere eintragen:</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].filter(m=>m.id!==currentUser.id).map(m=>(
-                  <button key={m.id} style={{...S.btn("light"),padding:"5px 10px",fontSize:11,borderRadius:8}} onClick={()=>openAddVacation(m.id)}>+ {m.name.split(" ")[0]}</button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Vacation modal */}
-        {showAddVacation&&(
-          <div style={S.modal}><div style={S.mBox}>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>🌴 Urlaub eintragen</div>
-            <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>für: <b>{members.find(m=>m.id===vacTargetId)?.name}</b></div>
-            <label style={S.label}>Von</label>
-            <input type="date" style={S.input} value={newVac.from} onChange={e=>setNewVac(p=>({...p,from:e.target.value}))}/>
-            <label style={S.label}>Bis</label>
-            <input type="date" style={S.input} value={newVac.to} onChange={e=>setNewVac(p=>({...p,to:e.target.value}))}/>
-            <label style={S.label}>Notiz (optional)</label>
-            <input style={S.input} placeholder="z.B. Sommerurlaub" value={newVac.note} onChange={e=>setNewVac(p=>({...p,note:e.target.value}))}/>
-            <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
-              <button style={S.btn("light")} onClick={()=>setShowAddVacation(false)}>Abbrechen</button>
-              <button style={S.btn("teal")} onClick={addVacation}>Eintragen</button>
-            </div>
-          </div></div>
-        )}
-    </div>
-  );};
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // MIST
-  // ══════════════════════════════════════════════════════════════════════════
-  const MistScreen = () => {
-    const [adminView, setAdminView] = useState("week"); // "week" | "month"
-    const [monthOffset, setMonthOffset] = useState(0);
-
-    // Month navigation
-    const viewDate  = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
-    const viewYear  = viewDate.getFullYear();
-    const viewMonth = viewDate.getMonth();
-    const monthLabel = viewDate.toLocaleDateString("de-DE",{month:"long",year:"numeric"});
-
-    // All days in the viewed month
-    const daysInMonth = () => {
-      const days = [];
-      const d = new Date(viewYear, viewMonth, 1);
-      while(d.getMonth()===viewMonth){ days.push(new Date(d)); d.setDate(d.getDate()+1); }
-      return days;
-    };
-
-    // Admin week grid rows (all members)
-    const adminRows=[];
-    einstellerList.forEach(e=>{
-      adminRows.push({member:e,isChild:false});
-      members.filter(m=>m.einstellerId===e.id).forEach(rb=>adminRows.push({member:rb,isChild:true}));
-    });
-
-    // Vacation card — admin sees all, einsteller sees only own
-    const vacMembers = isAdmin
-      ? [...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")]
-      : [currentUser];
-
-    return (
-      <div>
-        {/* ── EINSTELLER: Monatsansicht (nur eigene) ── */}
-        {!isAdmin&&(
-          <div style={S.card}>
-            {/* Header */}
-            <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
-              <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o-1)}>‹</button>
-              <div style={{textAlign:"center"}}>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#3d2b1f"}}>{monthLabel}</div>
-                {monthOffset===0&&<div style={{fontSize:10,color:"#c8913a",fontWeight:600}}>DIESER MONAT</div>}
-              </div>
-              <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o+1)}>›</button>
-            </div>
-            {/* Stats */}
-            {(()=>{
-              const mQ=getMonthlyQuota(currentUser,members,vacations,viewYear,viewMonth);
-              const mC=countMistMonth(mistData,currentUser.id,viewYear,viewMonth);
-              return (
-                <div style={{...S.row,justifyContent:"space-between",background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
-                  <div>
-                    <div style={{fontSize:12,color:"#8b6040"}}>Mein Monatssoll</div>
-                    <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:mC>=mQ?"#27ae60":"#c0392b",fontWeight:700}}>{mC}<span style={{fontSize:13,color:"#aaa"}}>/{mQ}×</span></div>
-                  </div>
-                  <div style={{fontSize:24}}>{mC>=mQ?"✅":"⏳"}</div>
-                </div>
-              );
-            })()}
-            {/* Calendar grid */}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:6}}>
-              {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
-                <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700,paddingBottom:4}}>{d}</div>
-              ))}
-              {/* leading empty cells */}
-              {Array.from({length:(new Date(viewYear,viewMonth,1).getDay()||7)-1}).map((_,i)=><div key={"e"+i}/>)}
-              {daysInMonth().map(d=>{
-                const k            = dk(d);
-                const checked      = (mistData[k]||[]).includes(currentUser.id);
-                const isPast       = d < new Date(dk(today));
-                const isToday      = k===dk(today);
-                const onVac        = isOnVacationDay(currentUser.id,k,vacations);
-                const takenByOther = (mistData[k]||[]).some(id=>id!==currentUser.id);
-                const locked       = isMistLocked(k);
-                const canClick     = !onVac && !takenByOther && !locked;
-                return (
-                  <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
-                    style={{
-                      aspectRatio:"1",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                      cursor:canClick?"pointer":"default",
-                      background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":locked&&!checked?"#f5f0e8":isPast?"#f5f0e8":"#fff",
-                      border:isToday?"2px solid #c8913a":checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther?"2px solid #f5c0c0":"1px solid #e2d5c0",
-                      opacity:locked&&!checked?0.6:1,
-                      transition:"all .15s"
-                    }}>
-                    <div style={{fontSize:11,fontWeight:isToday?700:400,color:checked?"#fff":takenByOther?"#c0392b":onVac?"#16a085":"#2c2416"}}>{d.getDate()}</div>
-                    {onVac&&<div style={{fontSize:8}}>🌴</div>}
-                    {!onVac&&checked&&<div style={{fontSize:8,color:"#fff"}}>✓</div>}
-                    {!onVac&&!checked&&takenByOther&&<div style={{fontSize:8,color:"#c0392b"}}>✗</div>}
-                    {!onVac&&!checked&&!takenByOther&&locked&&<div style={{fontSize:8,color:"#aaa"}}>🔒</div>}
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa",marginTop:6}}>
-              <span>✓ = Eingetragen</span>
-              <span style={{color:"#c0392b"}}>✗ = Tag vergeben</span>
-              <span>🌴 = Urlaub</span>
-              <span>🔒 = Gesperrt</span>
-            </div>
-          </div>
-        )}
-
-        {/* ── ADMIN: Wochen- oder Monatsansicht ── */}
-        {isAdmin&&(
-          <div style={S.card}>
-            {/* View toggle */}
-            <div style={{...S.row,justifyContent:"center",gap:6,marginBottom:14}}>
-              <button onClick={()=>setAdminView("week")} style={{...S.btn(adminView==="week"?"primary":"light"),padding:"6px 16px",fontSize:12}}>📅 Woche</button>
-              <button onClick={()=>setAdminView("month")} style={{...S.btn(adminView==="month"?"primary":"light"),padding:"6px 16px",fontSize:12}}>📆 Monat</button>
-            </div>
-
-            {adminView==="week"&&(<>
-              <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
-                <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setWeekOffset(w=>w-1)}>‹</button>
-                <div style={{textAlign:"center"}}>
-                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:13,color:"#3d2b1f"}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</div>
-                  {weekOffset===0&&<div style={{fontSize:10,color:"#c8913a",fontWeight:600}}>DIESE WOCHE</div>}
-                </div>
-                <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setWeekOffset(w=>w+1)}>›</button>
-              </div>
-              <div style={S.divider}/>
-              <div style={{display:"grid",gridTemplateColumns:"96px repeat(7,1fr)",gap:2,marginBottom:6}}>
-                <div/>
-                {weekDates.map(d=>(
-                  <div key={dk(d)} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:600,lineHeight:1.3}}>
-                    {d.toLocaleDateString("de-DE",{weekday:"short"})}<br/>{d.getDate()}
-                  </div>
-                ))}
-              </div>
-              {adminRows.map(({member:m,isChild})=>{
-                const mYear=weekDates[0].getFullYear(); const mMonth=weekDates[0].getMonth();
-                const monthQ=getMonthlyQuota(m,members,vacations,mYear,mMonth);
-                const monthC=countMistMonth(mistData,m.id,mYear,mMonth);
-                const ok=monthC>=monthQ;
-                const onVacWeek=getMemberWeekQuota(m,dk(weekDates[0]),members,vacations)===0;
-                const isMe=currentUser.id===m.id;
-                return (
-                  <div key={m.id} style={{marginBottom:4}}>
-                    <div style={{display:"grid",gridTemplateColumns:"96px repeat(7,1fr)",gap:2,alignItems:"center"}}>
-                      <div style={{paddingLeft:isChild?10:0}}>
-                        {isChild&&<div style={{fontSize:8,color:"#b89060",marginBottom:1}}>↳ Beteil.</div>}
-                        <div style={{fontSize:11,fontWeight:isMe?700:500,color:isMe?"#c8913a":"#2c2416",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name.split(" ")[0]}</div>
-                        {onVacWeek?<div style={{fontSize:9,color:"#16a085",fontWeight:600}}>🌴 Urlaub</div>
-                          :<div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{monthC}/{monthQ}Mo</div>}
-                      </div>
-                      {weekDates.map(d=>{
-                        const k=dk(d); const checked=(mistData[k]||[]).includes(m.id);
-                        const isPast=d<new Date(dk(today)); const onVac=isOnVacationDay(m.id,k,vacations);
-                        const takenByOther=(mistData[k]||[]).some(id=>id!==m.id);
-                        return (
-                          <div key={k} onClick={()=>toggleMist(k,m.id)}
-                            style={{height:30,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
-                              background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":isPast?"#f5f0e8":"#faf6f0",
-                              border:checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther?"2px solid #f5c0c0":isMe&&!isPast?"2px solid #c8913a55":"2px solid #e2d5c0",
-                              transition:"all .15s"}}>
-                            {onVac&&<span style={{fontSize:10}}>🌴</span>}
-                            {!onVac&&checked&&<span style={{color:"#fff",fontSize:11}}>✓</span>}
-                            {!onVac&&!checked&&takenByOther&&<span style={{fontSize:9,color:"#c0392b"}}>✗</span>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-              <div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa"}}>
-                <span>✓ = Eingetragen</span><span>🌴 = Urlaub</span>
-                <span style={{color:"#c0392b"}}>✗ = Tag vergeben</span>
-                <span style={{color:"#c8913a",fontWeight:600}}>Mo = Monatssoll</span>
-              </div>
-            </>)}
-
-            {adminView==="month"&&(<>
-              {/* Month navigation */}
-              <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
-                <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o-1)}>‹</button>
-                <div style={{textAlign:"center"}}>
-                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#3d2b1f"}}>{monthLabel}</div>
-                  {monthOffset===0&&<div style={{fontSize:10,color:"#c8913a",fontWeight:600}}>DIESER MONAT</div>}
-                </div>
-                <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o+1)}>›</button>
-              </div>
-
-              {/* Calendar grid — all members color-coded */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:8}}>
-                {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
-                  <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700,paddingBottom:3}}>{d}</div>
-                ))}
-                {Array.from({length:(new Date(viewYear,viewMonth,1).getDay()||7)-1}).map((_,i)=><div key={"e"+i}/>)}
-                {daysInMonth().map(d=>{
-                  const k          = dk(d);
-                  const bookedIds  = mistData[k]||[];
-                  const isToday    = k===dk(today);
-                  const isPast     = d < new Date(dk(today));
-                  const hasEntry   = bookedIds.length > 0;
-                  // find who booked this day (first person)
-                  const bookedMember = hasEntry ? members.find(m=>m.id===bookedIds[0]) : null;
-                  // check if anyone is on vacation this day
-                  const someoneOnVac = [...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")]
-                    .some(m=>isOnVacationDay(m.id,k,vacations));
-                  return (
-                    <div key={k}
-                      style={{
-                        aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                        background:hasEntry?"#c8913a":isPast?"#f5f0e8":"#fff",
-                        border:isToday?"2px solid #c8913a":hasEntry?"2px solid #a07030":"1px solid #e2d5c0",
-                        cursor:"default", transition:"all .15s", position:"relative"
-                      }}>
-                      <div style={{fontSize:10,fontWeight:isToday?700:400,color:hasEntry?"#fff":"#2c2416"}}>{d.getDate()}</div>
-                      {hasEntry&&<div style={{fontSize:7,color:"#fff5e0",fontWeight:600,lineHeight:1,textAlign:"center",overflow:"hidden",maxWidth:"90%",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {bookedMember?.name.split(" ")[0]}
-                      </div>}
-                      {!hasEntry&&someoneOnVac&&<div style={{fontSize:8}}>🌴</div>}
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa",marginBottom:16}}>
-                <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:3,background:"#c8913a",display:"inline-block"}}/> Belegt</span>
-                <span>🌴 = Urlaub</span>
-              </div>
-
-              {/* Open list */}
-              <div style={{borderTop:"1px solid #f0e8d8",paddingTop:12}}>
-                <div style={{fontWeight:700,fontSize:12,color:"#3d2b1f",marginBottom:8}}>Offene Dienste {monthLabel}</div>
-                {[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].map(m=>{
-                  const mQ=getMonthlyQuota(m,members,vacations,viewYear,viewMonth);
-                  const mC=countMistMonth(mistData,m.id,viewYear,viewMonth);
-                  const isChild=m.type==="reitbeteiligung";
-                  return (
-                    <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",paddingLeft:isChild?12:0,borderBottom:"1px solid #f5f0e8"}}>
-                      <div>
-                        {isChild&&<span style={{fontSize:9,color:"#b89060"}}>↳ </span>}
-                        <span style={{fontSize:12,fontWeight:mC>=mQ?400:600,color:mC>=mQ?"#aaa":"#2c2416"}}>{m.name.split(" ")[0]} {m.name.split(" ")[1]?.charAt(0)}.</span>
-                        {(vacations[m.id]||[]).length>0&&<span style={{fontSize:10}}> 🌴</span>}
-                      </div>
-                      <span style={{
-                        fontSize:11,fontWeight:700,
-                        color:mC>=mQ?"#27ae60":"#c0392b",
-                        background:mC>=mQ?"#d5f5e3":"#fdecea",
-                        padding:"3px 8px",borderRadius:20
-                      }}>{mC>=mQ?"✓ Erledigt":`${mC}/${mQ}×`}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </>)}
-          </div>
-        )}
-
-      </div>
-    );
-  };
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // MEMBERS
-  // ══════════════════════════════════════════════════════════════════════════
-  const MembersScreen = () => {
-    const startEdit = m => { setEditId(m.id); setEditData({name:m.name,horse:m.horse,phone:m.phone||"",pin:m.pin,type:m.type,einstellerId:m.einstellerId||""}); };
-    const cancelEdit = () => setEditId(null);
-    const saveEdit = async id => {
-      if(!editData.name||!editData.pin) return;
-      await saveMemberEdit(id, editData);
-      setEditId(null);
-    };
-    const inS = {...S.input,marginBottom:6,padding:"8px 10px",fontSize:12};
-    const lS  = {...S.label,marginBottom:2};
-    const MRow = ({m,isChild}) => {
-      const isEditing = isAdmin&&editId===m.id;
-      const avBg = m.type==="admin"?"linear-gradient(135deg,#c8913a,#f5c842)":isChild?"linear-gradient(135deg,#7f8c8d,#aaa)":undefined;
-      const avSz = isChild?{width:30,height:30,fontSize:12}:{};
-      return (
-        <div style={isChild?{paddingLeft:14,paddingTop:10,borderTop:"1px dashed #f0e8d8"}:{}}>
-          {!isEditing?(
-            <div style={{...S.row,justifyContent:"space-between"}}>
-              <div style={{...S.row,gap:10}}>
-                <div style={{...S.ava(avBg),...avSz}}>{m.name.charAt(0)}</div>
-                <div>
-                  <div style={{fontWeight:600,fontSize:isChild?12:13}}>{m.name} {m.type==="admin"&&<span style={{fontSize:10,color:"#c8913a"}}>👑</span>}</div>
-                  <div style={{fontSize:11,color:"#8b6040"}}>{m.type==="reitbeteiligung"?"🤝 Reitbeteiligung":m.type==="admin"?"👑 Admin":"🐴 Einsteller"}{m.horse?` · ${m.horse}`:""}</div>
-                  {isAdmin&&<><div style={{fontSize:10,color:"#aaa"}}>{m.phone&&`📞 ${m.phone}`}</div><div style={{fontSize:10,color:"#b89060"}}>PIN: {m.pin}</div></>}
-                  {getVacationLabel(m.id)&&<div style={{fontSize:10,color:"#16a085",marginTop:2}}>{getVacationLabel(m.id)}</div>}
-                </div>
-              </div>
-              {isAdmin&&(
-                <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
-                  <button onClick={()=>startEdit(m)} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,color:"#8b6040"}}>✏️ Bearbeiten</button>
-                  {m.type!=="admin"&&<button onClick={()=>deleteMember(m.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:"2px 4px"}}><Ic n="x" s={13}/></button>}
-                </div>
-              )}
-            </div>
-          ):(
-            <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#c8913a",marginBottom:10}}>✏️ Bearbeiten: {m.name}</div>
-              <label style={lS}>Name</label><input style={inS} value={editData.name} onChange={e=>setEditData(p=>({...p,name:e.target.value}))}/>
-              <label style={lS}>Pferd</label><input style={inS} value={editData.horse} onChange={e=>setEditData(p=>({...p,horse:e.target.value}))}/>
-              <label style={lS}>Telefon</label><input style={inS} value={editData.phone} onChange={e=>setEditData(p=>({...p,phone:e.target.value}))}/>
-              <label style={lS}>PIN zurücksetzen</label><input style={inS} maxLength={4} value={editData.pin} onChange={e=>setEditData(p=>({...p,pin:e.target.value.replace(/\D/,"")}))}/>
-              {m.type!=="admin"&&<><label style={lS}>Typ</label>
-                <select style={inS} value={editData.type} onChange={e=>setEditData(p=>({...p,type:e.target.value,einstellerId:""}))}>
-                  <option value="einsteller">🐴 Einsteller</option><option value="reitbeteiligung">🤝 Reitbeteiligung</option>
-                </select></>}
-              {editData.type==="reitbeteiligung"&&<><label style={lS}>Gehört zu Einsteller</label>
-                <select style={inS} value={editData.einstellerId} onChange={e=>setEditData(p=>({...p,einstellerId:e.target.value}))}>
-                  <option value="">— bitte wählen —</option>
-                  {einstellerList.filter(x=>x.id!==m.id).map(x=><option key={x.id} value={x.id}>{x.name} ({x.horse})</option>)}
-                </select></>}
-              <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
-                <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={cancelEdit}>Abbrechen</button>
-                <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={()=>saveEdit(m.id)}>💾 Speichern</button>
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    };
-    return (
-      <div>
-        {!isAdmin&&(
-          <div style={S.card}>
-            <div style={S.cTitle}>Mein Profil</div>
-            <div style={{...S.row,gap:10,marginBottom:12}}>
-              <div style={S.ava()}>{currentUser.name.charAt(0)}</div>
-              <div>
-                <div style={{fontWeight:600,fontSize:14}}>{currentUser.name}</div>
-                <div style={{fontSize:11,color:"#8b6040"}}>{currentUser.type==="einsteller"?"🐴 Einsteller":"🤝 Reitbeteiligung"}{currentUser.horse?` · ${currentUser.horse}`:""}</div>
-                {currentUser.phone&&<div style={{fontSize:11,color:"#aaa"}}>📞 {currentUser.phone}</div>}
-              </div>
-            </div>
-            {!pinMode?(
-              <button style={{...S.btn("light"),padding:"8px 14px",fontSize:12}} onClick={()=>setPinMode(true)}>🔑 PIN ändern</button>
-            ):(
-              <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a",marginTop:8}}>
-                <div style={{fontSize:12,fontWeight:700,color:"#c8913a",marginBottom:10}}>🔑 PIN ändern</div>
-                <label style={S.label}>Alte PIN</label>
-                <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.old} onChange={e=>setPins(p=>({...p,old:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
-                <label style={S.label}>Neue PIN</label>
-                <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.n1} onChange={e=>setPins(p=>({...p,n1:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
-                <label style={S.label}>Neue PIN bestätigen</label>
-                <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.n2} onChange={e=>setPins(p=>({...p,n2:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
-                {pinErr&&<div style={{fontSize:11,color:"#c0392b",marginBottom:8}}>{pinErr}</div>}
-                <div style={{...S.row,justifyContent:"flex-end",gap:8}}>
-                  <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={()=>{setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");}}>Abbrechen</button>
-                  <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={async()=>{
-                    if(pins.old!==currentUser.pin){setPinErr("Alte PIN falsch");return;}
-                    if(pins.n1.length!==4){setPinErr("Neue PIN muss 4 Ziffern haben");return;}
-                    if(pins.n1!==pins.n2){setPinErr("PINs stimmen nicht überein");return;}
-                    await saveMemberEdit(currentUser.id,{...currentUser,pin:pins.n1,einstellerId:currentUser.einstellerId||""});
-                    setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");
-                    showToast("✅ PIN erfolgreich geändert!");
-                  }}>💾 Speichern</button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        {einstellerList.map(e=>(
-          <div key={e.id} style={S.card}>
-            <MRow m={e} isChild={false}/>
-            {members.filter(m=>m.einstellerId===e.id).map(rb=><MRow key={rb.id} m={rb} isChild={true}/>)}
-          </div>
-        ))}
-        {isAdmin&&<div style={{margin:"14px 16px 0"}}><button style={{...S.btn("primary"),width:"100%",padding:14}} onClick={()=>setShowAddMember(true)}>+ Mitglied hinzufügen</button></div>}
-        {showAddMember&&(
-          <div style={S.modal}><div style={S.mBox}>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Neues Mitglied</div>
-            <label style={S.label}>Name</label><input style={S.input} placeholder="Vor- und Nachname" value={newMember.name} onChange={e=>setNewMember(p=>({...p,name:e.target.value}))}/>
-            <label style={S.label}>Pferd</label><input style={S.input} placeholder="Name des Pferdes" value={newMember.horse} onChange={e=>setNewMember(p=>({...p,horse:e.target.value}))}/>
-            <label style={S.label}>Typ</label>
-            <select style={S.input} value={newMember.type} onChange={e=>setNewMember(p=>({...p,type:e.target.value,einstellerId:""}))}>
-              <option value="einsteller">Einsteller</option><option value="reitbeteiligung">Reitbeteiligung</option><option value="admin">Admin</option>
-            </select>
-            {newMember.type==="reitbeteiligung"&&<><label style={S.label}>Gehört zu Einsteller</label>
-              <select style={S.input} value={newMember.einstellerId} onChange={e=>setNewMember(p=>({...p,einstellerId:e.target.value}))}>
-                <option value="">— bitte wählen —</option>
-                {einstellerList.map(m=><option key={m.id} value={m.id}>{m.name} ({m.horse})</option>)}
-              </select></>}
-            <label style={S.label}>PIN (4-stellig)</label><input style={S.input} placeholder="z.B. 1234" maxLength={4} value={newMember.pin} onChange={e=>setNewMember(p=>({...p,pin:e.target.value.replace(/\D/,"")}))}/>
-            <label style={S.label}>Telefon</label><input style={S.input} placeholder="Optional" value={newMember.phone} onChange={e=>setNewMember(p=>({...p,phone:e.target.value}))}/>
-            <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
-              <button style={S.btn("light")} onClick={()=>setShowAddMember(false)}>Abbrechen</button>
-              <button style={S.btn("primary")} onClick={addMember}>Hinzufügen</button>
-            </div>
-          </div></div>
-        )}
-      </div>
-    );
-  };
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // FINANCE HELPERS
-  // ══════════════════════════════════════════════════════════════════════════
-  const fmKey = (memberId, year, month) => memberId+"_"+year+"-"+String(month+1).padStart(2,"0");
-  const getFinMonth = (memberId, year, month) => finMonths[fmKey(memberId,year,month)] || {extras:[],payment:null,carryover:0,notes:""};
-  const getBaseFee  = (memberId) => finAccounts[memberId]?.baseFee || 0;
-
-  const calcTotal = (memberId, year, month) => {
-    const fm   = getFinMonth(memberId, year, month);
-    const base = getBaseFee(memberId);
-    const extrasSum = (fm.extras||[]).reduce((a,e)=>a+Number(e.amount),0);
-    return base + extrasSum + Number(fm.carryover||0);
-  };
-
-  const saveFinMonth = async (memberId, year, month, data) => {
-    const key  = fmKey(memberId, year, month);
-    const mon  = year+"-"+String(month+1).padStart(2,"0");
-    const existing = finMonths[key];
-    const row  = { member_id:memberId, month:mon, extras:data.extras??existing?.extras??[], payment:data.payment??existing?.payment??null, carryover:data.carryover??existing?.carryover??0, notes:data.notes??existing?.notes??"" };
-    setFinMonths(prev=>({...prev,[key]:{...existing,...data}}));
-    if(existing?.id){
-      await sb.from("finance_months").update(row).eq("id",existing.id);
-    } else {
-      const newRow = {...row, id:Date.now()};
-      setFinMonths(prev=>({...prev,[key]:{...newRow,id:newRow.id}}));
-      await sb.from("finance_months").insert(newRow);
-    }
-  };
-
-  const saveBaseFee = async (memberId, fee) => {
-    const existing = finAccounts[memberId];
-    setFinAccounts(prev=>({...prev,[memberId]:{...prev[memberId],baseFee:fee}}));
-    if(existing?.id){
-      await sb.from("finance_accounts").update({base_fee:fee}).eq("id",existing.id);
-    } else {
-      const row = {id:Date.now(), member_id:memberId, base_fee:fee};
-      setFinAccounts(prev=>({...prev,[memberId]:{id:row.id,baseFee:fee}}));
-      await sb.from("finance_accounts").insert(row);
-    }
-  };
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // FINANZEN
-  // ══════════════════════════════════════════════════════════════════════════
-  const FinanzenScreen = () => {
-    const einsteller = members.filter(m=>m.type==="einsteller");
-    const viewMonth = finViewMonth;
-    const viewYear  = finViewYear;
-
-    const monthLabel = new Date(viewYear,viewMonth,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"});
-
-    const goMonth = (dir) => {
-      let m=viewMonth+dir, y=viewYear;
-      if(m>11){m=0;y++;} if(m<0){m=11;y--;}
-      setFinViewMonth(m); setFinViewYear(y);
-    };
-
-    const handleSaveFee = async (memberId) => {
-      const fee = parseFloat(editFee[memberId]);
-      if(isNaN(fee)) return;
-      await saveBaseFee(memberId, fee);
-      setEditFee(p=>({...p,[memberId]:undefined}));
-      showToast("💾 Grundgebühr gespeichert!");
-    };
-
-    const handleSavePayment = async (memberId) => {
-      const pay  = parseFloat(editPay[memberId]);
-      if(isNaN(pay)) return;
-      const total = calcTotal(memberId, viewYear, viewMonth);
-      let diff  = pay - total;
-      // clamp carryover to ±5
-      if(diff > 5)  diff = 5;
-      if(diff < -5) diff = -5;
-      // Save this month's payment
-      await saveFinMonth(memberId, viewYear, viewMonth, {payment:pay});
-      // Apply carryover to NEXT month
-      let nm=viewMonth+1, ny=viewYear;
-      if(nm>11){nm=0;ny++;}
-      const nextFm = getFinMonth(memberId,ny,nm);
-      await saveFinMonth(memberId, ny, nm, {carryover: Number((nextFm.carryover||0) + diff)});
-      setEditPay(p=>({...p,[memberId]:undefined}));
-      showToast(diff!==0?`💾 Zahlung gespeichert · Übertrag: ${diff>0?"+":""}${diff.toFixed(2)}€`:"💾 Zahlung gespeichert!");
-    };
-
-    const handleAddExtra = async (memberId) => {
-      const amount = parseFloat(extraForm.amount);
-      if(isNaN(amount)||amount<=0) return;
-      const fm = getFinMonth(memberId, viewYear, viewMonth);
-      const newExtra = {id:Date.now(), type:extraForm.type, amount, desc:extraForm.desc};
-      await saveFinMonth(memberId, viewYear, viewMonth, {extras:[...(fm.extras||[]),newExtra]});
-      setAddExtra(null);
-      setExtraForm({type:"Decken waschen",amount:"5",desc:""});
-      showToast("✅ Zusatzdienst gebucht!");
-    };
-
-    const handleRemoveExtra = async (memberId, extraId) => {
-      const fm = getFinMonth(memberId, viewYear, viewMonth);
-      await saveFinMonth(memberId, viewYear, viewMonth, {extras:(fm.extras||[]).filter(e=>e.id!==extraId)});
-    };
-
-    // Einsteller view — only their own account
-    if(!isAdmin) {
-      const m     = currentUser;
-      const fm    = getFinMonth(m.id, viewYear, viewMonth);
-      const base  = getBaseFee(m.id);
-      const extras= fm.extras||[];
-      const carry = Number(fm.carryover||0);
-      const total = calcTotal(m.id, viewYear, viewMonth);
-      const paid  = fm.payment!==null&&fm.payment!==undefined;
-      const diff  = paid ? Math.min(5,Math.max(-5, fm.payment - total)) : null;
-      return (
-        <div>
-          {/* Month nav */}
-          <div style={{...S.row,justifyContent:"space-between",margin:"14px 16px 0"}}>
-            <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(-1)}>‹</button>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#3d2b1f",fontWeight:600}}>{monthLabel}</div>
-            <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(1)}>›</button>
-          </div>
-
-          {/* Summary card */}
-          <div style={{...S.card,background:"linear-gradient(135deg,#3d2b1f,#7a5230)",color:"#f5e6c8"}}>
-            <div style={{fontSize:11,color:"#c8913a",marginBottom:4}}>Mein Konto · {monthLabel}</div>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:38,fontWeight:700}}>{total.toFixed(2)}€</div>
-            <div style={{fontSize:11,color:"#d4b88a",marginTop:4}}>
-              Grundgebühr {base.toFixed(2)}€
-              {extras.length>0&&` + Extras ${extras.reduce((a,e)=>a+Number(e.amount),0).toFixed(2)}€`}
-              {carry!==0&&` ${carry>0?"+":""} ${carry.toFixed(2)}€ Übertrag`}
-            </div>
-            <div style={{marginTop:12,padding:"8px 12px",borderRadius:10,background:paid?"rgba(255,255,255,.1)":"rgba(192,57,43,.3)"}}>
-              {paid
-                ? <span style={{fontSize:12,fontWeight:600}}>✓ Zahlung eingegangen: {Number(fm.payment).toFixed(2)}€{diff!==0?` · Übertrag nächsten Monat: ${diff>0?"+":""}${diff?.toFixed(2)}€`:""}</span>
-                : <span style={{fontSize:12,fontWeight:600,color:"#ffb3a7"}}>⏳ Zahlung noch ausstehend</span>}
-            </div>
-          </div>
-
-          {/* Extras card */}
-          <div style={S.card}>
-            <div style={{...S.row,justifyContent:"space-between",marginBottom:10}}>
-              <div style={S.cTitle}>Zusatzdienste</div>
-              <button style={{...S.btn("primary"),padding:"7px 12px",fontSize:12}} onClick={()=>{setAddExtra(m.id);setExtraForm({type:"Decken waschen",amount:"5",desc:""});}}>+ Hinzufügen</button>
-            </div>
-            {extras.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Keine Zusätze diesen Monat</div>}
-            {extras.map(e=>(
-              <div key={e.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f0e8d8"}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:500}}>{e.type}</div>
-                  {e.desc&&<div style={{fontSize:11,color:"#8b6040"}}>{e.desc}</div>}
-                </div>
-                <div style={{...S.row,gap:8}}>
-                  <span style={{fontWeight:700,fontSize:13,color:"#c8913a"}}>{Number(e.amount).toFixed(2)}€</span>
-                  {!paid&&<button onClick={()=>handleRemoveExtra(m.id,e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:2}}><Ic n="x" s={13}/></button>}
-                </div>
-              </div>
-            ))}
-            {carry!==0&&(
-              <div style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderTop:"1px solid #f0e8d8",marginTop:4}}>
-                <div style={{fontSize:12,color:"#8b6040"}}>Übertrag Vormonat</div>
-                <span style={{fontWeight:700,fontSize:13,color:carry>0?"#27ae60":"#c0392b"}}>{carry>0?"+":""}{carry.toFixed(2)}€</span>
-              </div>
-            )}
-            <div style={{...S.row,justifyContent:"space-between",padding:"10px 0 0",borderTop:"2px solid #e2d5c0",marginTop:6}}>
-              <div style={{fontWeight:700,fontSize:14}}>Gesamt</div>
-              <div style={{fontWeight:700,fontSize:18,color:"#3d2b1f"}}>{total.toFixed(2)}€</div>
-            </div>
-          </div>
-
-          {/* Add extra modal */}
-          {addExtra===m.id&&(
-            <div style={S.modal}><div style={S.mBox}>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Zusatzdienst buchen</div>
-              <label style={S.label}>Typ</label>
-              <select style={S.input} value={extraForm.type} onChange={e=>setExtraForm(p=>({...p,type:e.target.value,amount:e.target.value==="Decken waschen"?"5":p.amount}))}>
-                <option>Decken waschen</option>
-                <option>Sonstiges</option>
-              </select>
-              <label style={S.label}>Betrag (€)</label>
-              <input style={S.input} type="number" step="0.50" min="0" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
-              <label style={S.label}>Beschreibung (optional)</label>
-              <input style={S.input} placeholder="z.B. 2× Decken" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
-              <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
-                <button style={S.btn("light")} onClick={()=>setAddExtra(null)}>Abbrechen</button>
-                <button style={S.btn("primary")} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
-              </div>
-            </div></div>
-          )}
-        </div>
-      );
-    }
-
-    // ── Admin view ──────────────────────────────────────────────────────────
-    const totalOwed    = einsteller.reduce((a,m)=>a+calcTotal(m.id,viewYear,viewMonth),0);
-    const totalReceived= einsteller.reduce((a,m)=>{ const fm=getFinMonth(m.id,viewYear,viewMonth); return a+(fm.payment||0); },0);
-
-    return (
-      <div>
-        {/* Month nav */}
-        <div style={{...S.row,justifyContent:"space-between",margin:"14px 16px 0"}}>
-          <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(-1)}>‹</button>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#3d2b1f",fontWeight:600}}>{monthLabel}</div>
-          <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>goMonth(1)}>›</button>
-        </div>
-
-        {/* Summary banner */}
-        <div style={{...S.card,background:"linear-gradient(135deg,#3d2b1f,#7a5230)",color:"#f5e6c8"}}>
-          <div style={{fontSize:11,color:"#c8913a",marginBottom:4}}>Stallübersicht · {monthLabel}</div>
-          <div style={{...S.row,justifyContent:"space-between",alignItems:"flex-end"}}>
-            <div>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:32,fontWeight:700}}>{totalReceived.toFixed(2)}€</div>
-              <div style={{fontSize:11,color:"#d4b88a"}}>eingegangen von {totalOwed.toFixed(2)}€</div>
-            </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{fontSize:22,fontWeight:700,color:totalReceived>=totalOwed?"#a8e6cf":"#ffb3a7"}}>{einsteller.filter(m=>getFinMonth(m.id,viewYear,viewMonth).payment!==null&&getFinMonth(m.id,viewYear,viewMonth).payment!==undefined).length}/{einsteller.length}</div>
-              <div style={{fontSize:10,color:"#d4b88a"}}>bezahlt</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Per-member cards */}
-        {einsteller.map(m=>{
-          const fm     = getFinMonth(m.id, viewYear, viewMonth);
-          const base   = getBaseFee(m.id);
-          const extras = fm.extras||[];
-          const carry  = Number(fm.carryover||0);
-          const total  = calcTotal(m.id, viewYear, viewMonth);
-          const paid   = fm.payment!==null&&fm.payment!==undefined;
-          const diff   = paid ? Math.min(5,Math.max(-5,fm.payment-total)) : null;
-          const editingFee = editFee[m.id]!==undefined;
-          const editingPay = editPay[m.id]!==undefined;
-
-          return (
-            <div key={m.id} style={S.card}>
-              {/* Header */}
-              <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
-                <div style={{...S.row,gap:10}}>
-                  <div style={S.ava()}>{m.name.charAt(0)}</div>
-                  <div>
-                    <div style={{fontWeight:600,fontSize:13}}>{m.name}</div>
-                    <div style={{fontSize:11,color:"#8b6040"}}>🐴 {m.horse}</div>
-                  </div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontWeight:700,fontSize:18,color:"#3d2b1f"}}>{total.toFixed(2)}€</div>
-                  <div style={{fontSize:10,color:paid?"#555":"#c0392b",fontWeight:600}}>{paid?`✓ ${Number(fm.payment).toFixed(2)}€ erhalten`:"⚠️ Offen"}</div>
-                </div>
-              </div>
-
-              {/* Base fee row */}
-              <div style={{...S.row,justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f0e8d8"}}>
-                <div style={{fontSize:12,color:"#8b6040"}}>Grundgebühr</div>
-                {editingFee
-                  ? <div style={{...S.row,gap:6}}>
-                      <input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.50" value={editFee[m.id]} onChange={e=>setEditFee(p=>({...p,[m.id]:e.target.value}))}/>
-                      <button style={{...S.btn("primary"),padding:"4px 10px",fontSize:11}} onClick={()=>handleSaveFee(m.id)}>OK</button>
-                      <button style={{...S.btn("light"),padding:"4px 8px",fontSize:11}} onClick={()=>setEditFee(p=>({...p,[m.id]:undefined}))}>✕</button>
-                    </div>
-                  : <div style={{...S.row,gap:8}}>
-                      <span style={{fontWeight:600,fontSize:13}}>{base.toFixed(2)}€</span>
-                      <button onClick={()=>setEditFee(p=>({...p,[m.id]:String(base)}))} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#8b6040"}}>✏️</button>
-                    </div>}
-              </div>
-
-              {/* Extras */}
-              <div style={{...S.row,justifyContent:"space-between",padding:"4px 0 4px",borderBottom:"1px solid #f5f0e8"}}>
-                <div style={{fontSize:11,color:"#8b6040",fontWeight:600}}>Zusätze</div>
-                <button style={{...S.btn("primary"),padding:"3px 10px",fontSize:11}} onClick={()=>{setAddExtra(m.id);setExtraForm({type:"Decken waschen",amount:"5",desc:""});}}>+ Hinzufügen</button>
-              </div>
-              {extras.map(e=>(
-                <div key={e.id} style={{...S.row,justifyContent:"space-between",padding:"5px 0 5px 10px",borderBottom:"1px solid #f5f0e8"}}>
-                  <div style={{fontSize:11,color:"#8b6040"}}>+ {e.type}{e.desc?` · ${e.desc}`:""}</div>
-                  <div style={{...S.row,gap:6}}>
-                    <span style={{fontSize:12,fontWeight:600,color:"#c8913a"}}>{Number(e.amount).toFixed(2)}€</span>
-                    <button onClick={()=>handleRemoveExtra(m.id,e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:2}}><Ic n="x" s={12}/></button>
-                  </div>
-                </div>
-              ))}
-              {addExtra===m.id&&(
-                <div style={{background:"#faf6f0",borderRadius:8,padding:10,border:"1px solid #c8913a",margin:"6px 0"}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"#c8913a",marginBottom:8}}>Zusatzdienst hinzufügen</div>
-                  <select style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} value={extraForm.type} onChange={e=>setExtraForm(p=>({...p,type:e.target.value,amount:e.target.value==="Decken waschen"?"5":p.amount}))}>
-                    <option>Decken waschen</option><option>Sonstiges</option>
-                  </select>
-                  <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} type="number" step="0.50" min="0" placeholder="Betrag (€)" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
-                  <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} placeholder="Beschreibung (optional)" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
-                  <div style={{...S.row,justifyContent:"flex-end",gap:6}}>
-                    <button style={{...S.btn("light"),padding:"5px 10px",fontSize:11}} onClick={()=>setAddExtra(null)}>Abbrechen</button>
-                    <button style={{...S.btn("primary"),padding:"5px 10px",fontSize:11}} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
-                  </div>
-                </div>
-              )}
-
-              {/* Carryover */}
-              {carry!==0&&(
-                <div style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
-                  <div style={{fontSize:11,color:"#8b6040"}}>Übertrag Vormonat</div>
-                  <span style={{fontSize:12,fontWeight:600,color:carry>0?"#27ae60":"#c0392b"}}>{carry>0?"+":""}{carry.toFixed(2)}€</span>
-                </div>
-              )}
-
-              {/* Total */}
-              <div style={{...S.row,justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #e2d5c0"}}>
-                <div style={{fontWeight:700,fontSize:13}}>Gesamt fällig</div>
-                <div style={{fontWeight:700,fontSize:15}}>{total.toFixed(2)}€</div>
-              </div>
-
-              {/* Payment entry */}
-              <div style={{...S.row,justifyContent:"space-between",padding:"8px 0 0"}}>
-                <div style={{fontSize:12,color:"#8b6040"}}>Zahlung eingetragen</div>
-                {editingPay
-                  ? <div style={{...S.row,gap:6}}>
-                      <input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.50" value={editPay[m.id]} onChange={e=>setEditPay(p=>({...p,[m.id]:e.target.value}))} placeholder={total.toFixed(2)}/>
-                      <button style={{...S.btn("primary"),padding:"4px 10px",fontSize:11}} onClick={()=>handleSavePayment(m.id)}>OK</button>
-                      <button style={{...S.btn("light"),padding:"4px 8px",fontSize:11}} onClick={()=>setEditPay(p=>({...p,[m.id]:undefined}))}>✕</button>
-                    </div>
-                  : <div style={{...S.row,gap:8}}>
-                      <span style={{fontWeight:600,fontSize:13,color:paid?"#555":"#c0392b"}}>{paid?`${Number(fm.payment).toFixed(2)}€`:"–"}</span>
-                      <button onClick={()=>setEditPay(p=>({...p,[m.id]:paid?String(fm.payment):String(total)}))} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#8b6040"}}>✏️</button>
-                    </div>}
-              </div>
-              {paid&&diff!==0&&(
-                <div style={{fontSize:11,color:diff>0?"#27ae60":"#c0392b",marginTop:4,fontWeight:600}}>
-                  → Übertrag nächsten Monat: {diff>0?"+":""}{diff.toFixed(2)}€
-                </div>
-              )}
-
-              {/* WhatsApp reminder */}
-              {!paid&&m.phone&&(
-                <a href={`https://wa.me/${m.phone.replace(/[^0-9]/g,"")}?text=Hallo%20${encodeURIComponent(m.name.split(" ")[0])}%2C%20deine%20Stallgeb%C3%BChr%20f%C3%BCr%20${encodeURIComponent(monthLabel)}%20betr%C3%A4gt%20${total.toFixed(2).replace(".",",")}%E2%82%AC.%20Bitte%20%C3%BCberweise%20zeitnah!%20%F0%9F%90%B4`}
-                  style={{...S.btn("primary"),textDecoration:"none",padding:"6px 14px",fontSize:11,display:"inline-block",marginTop:10}}>
-                  📲 WhatsApp Erinnerung
-                </a>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  // ── Render ────────────────────────────────────────────────────────────────
-  const screens={home:<HomeScreen/>,calendar:<CalendarScreen/>,mist:<MistScreen/>,members:<MembersScreen/>,finanzen:<FinanzenScreen/>};
   const tabs=[{id:"home",label:"Start",icon:"home"},{id:"calendar",label:"Termine",icon:"cal"},{id:"mist",label:"Mist",icon:"mist"},{id:"members",label:"Mitglieder",icon:"users"},{id:"finanzen",label:"Finanzen",icon:"money"}];
+
+  // Shared props bundles
+  const commonProps = { currentUser, isAdmin, members, vacations, einstellerList, showToast };
+  const finHelpers  = { calcTotal, getFinMonth, getBaseFee, saveFinMonth, saveBaseFee };
 
   return (
     <div style={S.root}>
@@ -1511,14 +1311,22 @@ export default function StallApp() {
         </div>
       </div>
       <div style={S.nav}>{tabs.map(t=><button key={t.id} style={S.navBtn(tab===t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>)}</div>
-      <div style={{paddingBottom:16}}>{screens[tab]}</div>
+
+      <div style={{paddingBottom:16}}>
+        {tab==="home"     && <HomeScreen {...commonProps} events={events} mistData={mistData} finMonths={finMonths} finAccounts={finAccounts} selDay={selDay} setSelDay={setSelDay} upcomingEvents={upcomingEvents} unpaid={unpaid} mistWarnings={mistWarnings} getVacationLabel={getVacationLabel} {...finHelpers}/>}
+        {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} deleteEvent={deleteEvent} setShowAddEvent={setShowAddEvent}/>}
+        {tab==="mist"     && <MistScreen {...commonProps} mistData={mistData} weekDates={weekDates} weekOffset={weekOffset} setWeekOffset={setWeekOffset} toggleMist={toggleMist} isMistLocked={isMistLocked}/>}
+        {tab==="members"  && <MembersScreen {...commonProps} showAddMember={showAddMember} setShowAddMember={setShowAddMember} newMember={newMember} setNewMember={setNewMember} addMember={addMember} deleteMember={deleteMember} saveMemberEdit={saveMemberEdit} getVacationLabel={getVacationLabel} editId={editId} setEditId={setEditId} editData={editData} setEditData={setEditData} pinMode={pinMode} setPinMode={setPinMode} pins={pins} setPins={setPins} pinErr={pinErr} setPinErr={setPinErr}/>}
+        {tab==="finanzen" && <FinanzenScreen {...commonProps} finMonths={finMonths} finAccounts={finAccounts} finViewMonth={finViewMonth} finViewYear={finViewYear} setFinViewMonth={setFinViewMonth} setFinViewYear={setFinViewYear} editFee={editFee} setEditFee={setEditFee} editPay={editPay} setEditPay={setEditPay} addExtra={addExtra} setAddExtra={setAddExtra} extraForm={extraForm} setExtraForm={setExtraForm} {...finHelpers}/>}
+      </div>
+
       <div style={S.bNav}>{tabs.map(t=>(
         <button key={t.id} style={S.bBtn(tab===t.id)} onClick={()=>setTab(t.id)}>
           <Ic n={t.icon} s={20}/><span style={{fontSize:9,fontWeight:600}}>{t.label}</span>
         </button>
       ))}</div>
 
-      {/* Add Event Modal — lives in root so it never remounts on keystroke */}
+      {/* Add Event Modal — in root */}
       {showAddEvent&&(
         <div style={S.modal}><div style={S.mBox}>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Neuer Termin</div>
