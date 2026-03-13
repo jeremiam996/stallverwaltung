@@ -917,22 +917,7 @@ function MRow({ m, isChild, isAdmin, einstellerList, editId, editData, setEditDa
               <option value="">— bitte wählen —</option>
               {einstellerList.filter(x=>x.id!==m.id).map(x=><option key={x.id} value={x.id}>{x.name} ({x.horse})</option>)}
             </select></>}
-          {(editData.type==="einsteller"||m.type==="einsteller")&&einstellerList.find(x=>x.id===m.id)&&members.filter(rb=>rb.einstellerId===m.id).length>0&&(<>
-            <label style={lS}>Mistdienst-Anteil Einsteller: <b>{editData.mistShare??50}%</b></label>
-            <div style={{...S.row,gap:8,marginBottom:6}}>
-              {[25,50,75,100].map(v=>(
-                <button key={v} onClick={()=>setEditData(p=>({...p,mistShare:v}))}
-                  style={{flex:1,padding:"5px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,
-                    background:(editData.mistShare??50)===v?"#c8913a":"#f0e6d3",
-                    color:(editData.mistShare??50)===v?"#fff":"#3d2b1f"}}>
-                  {v}%
-                </button>
-              ))}
-            </div>
-            <div style={{fontSize:10,color:"#aaa",marginBottom:6}}>
-              Rest ({100-(editData.mistShare??50)}%) wird gleichmäßig auf {members.filter(rb=>rb.einstellerId===m.id).length} Reitbet. verteilt
-            </div>
-          </>)}
+
           <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
             <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={cancelEdit}>Abbrechen</button>
             <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={()=>saveEdit(m.id)}>💾 Speichern</button>
@@ -989,26 +974,7 @@ function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacation
               </div>
             </div>
           )}
-          {/* Mistdienst-Aufteilung für Einsteller mit Reitbeteiligung */}
-          {currentUser.type==="einsteller"&&members.filter(rb=>rb.einstellerId===currentUser.id).length>0&&(
-            <div style={{marginTop:12,background:"#faf6f0",borderRadius:10,padding:12,border:"1px solid #e2d5c0"}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f",marginBottom:4}}>🧹 Mistdienst-Aufteilung</div>
-              <div style={{fontSize:11,color:"#8b6040",marginBottom:10}}>
-                Dein Anteil: <b>{currentUser.mistShare??50}%</b> · Rest auf {members.filter(rb=>rb.einstellerId===currentUser.id).length} Reitbet. aufgeteilt
-              </div>
-              <div style={{...S.row,gap:6}}>
-                {[25,50,75,100].map(v=>(
-                  <button key={v}
-                    onClick={async()=>{ await saveMemberEdit(currentUser.id,{...currentUser,mistShare:v,einstellerId:currentUser.einstellerId||""}); showToast("✅ Aufteilung gespeichert!"); }}
-                    style={{flex:1,padding:"7px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
-                      background:(currentUser.mistShare??50)===v?"#c8913a":"#f0e6d3",
-                      color:(currentUser.mistShare??50)===v?"#fff":"#3d2b1f",transition:"all .15s"}}>
-                    {v}%
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+
         </div>
       )}
       {einstellerList.map(e=>(
