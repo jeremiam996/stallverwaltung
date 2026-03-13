@@ -25,7 +25,7 @@ const SEED_EVENTS = [
   { id:3, type:"Impfen",     date:new Date(today.getFullYear(),today.getMonth(),today.getDate()+14).toISOString().slice(0,10), time:"14:00", note:"Influenza + Herpes",             color:"#27ae60" },
 ];
 
-const dbToMember = r => ({ id:r.id, name:r.name, horse:r.horse||"", type:r.type, pin:r.pin, paid:r.paid, phone:r.phone||"", einstellerId:r.einsteller_id, mistShare:r.mist_share??50 });
+const dbToMember = r => ({ id:r.id, name:r.name, horse:r.horse||"", type:r.type, pin:r.pin, paid:r.paid, phone:r.phone||"", einstellerId:r.einsteller_id, mistShare:r.mist_share??50, mistMode:r.mist_mode||"percent" });
 const dbToEvent  = r => ({ id:r.id, type:r.type, date:r.date, time:r.time||"", note:r.note||"", color:r.color, createdBy:r.created_by||"" });
 const dbToVac    = r => ({ id:r.id, from:r.from_date, to:r.to_date, note:r.note||"" });
 
@@ -54,27 +54,65 @@ const getWeeksInMonth = (year, month) => {
   return weeks;
 };
 
-const getBaseGroupQuota = (einsteller, allMembers) => {
-  // mistShare = Einsteller's share in %, default 50. Reitbeteiligungen split the rest equally.
+const getBaseGroupQuota = (einsteller, allMembers, year, month) => {
   const beteiligungen = allMembers.filter(m=>m.einstellerId===einsteller.id);
   if(beteiligungen.length===0) return 2; // solo: 2 per week
-  const share = (einsteller.mistShare??50) / 100;
-  return Math.max(1, Math.round(2 * share));
+  const mode = einsteller.mistMode||"percent";
+  const weeks = year!==undefined ? getWeeksInMonth(year,month).length : 4;
+  if(mode==="percent") {
+    const share = (einsteller.mistShare??50) / 100;
+    return Math.max(0, Math.round(2 * share));
+  }
+  if(mode==="fixed_e") {
+    // mistShare = fixed monthly count for Einsteller → per week = monthly / weeks
+    const monthly = einsteller.mistShare??4;
+    return Math.max(0, Math.round(monthly / weeks));
+  }
+  if(mode==="fixed_rb") {
+    // mistShare = fixed monthly count per RB → Einsteller gets remainder
+    const rbMonthly = einsteller.mistShare??2;
+    const totalMonthly = weeks * 2;
+    const rbTotal = rbMonthly * beteiligungen.length;
+    const eMonthly = Math.max(0, totalMonthly - rbTotal);
+    return Math.max(0, Math.round(eMonthly / weeks));
+  }
+  return 1;
+};
+const getRbWeekQuota = (root, allMembers, year, month) => {
+  const beteiligungen = allMembers.filter(m=>m.einstellerId===root.id);
+  if(beteiligungen.length===0) return 0;
+  const mode = root.mistMode||"percent";
+  const weeks = year!==undefined ? getWeeksInMonth(year,month).length : 4;
+  if(mode==="percent") {
+    const rootShare = (root.mistShare??50) / 100;
+    const rbShare = (1 - rootShare) / beteiligungen.length;
+    return Math.max(0, Math.round(2 * rbShare));
+  }
+  if(mode==="fixed_e") {
+    const eMonthly = root.mistShare??4;
+    const totalMonthly = weeks * 2;
+    const rbTotal = Math.max(0, totalMonthly - eMonthly);
+    return Math.max(0, Math.round(rbTotal / beteiligungen.length / weeks));
+  }
+  if(mode==="fixed_rb") {
+    const rbMonthly = root.mistShare??2;
+    return Math.max(0, Math.round(rbMonthly / weeks));
+  }
+  return 1;
 };
 const getMemberWeekQuota = (member, weekMon, allMembers, vacations) => {
   const weekEnd = new Date(weekMon); weekEnd.setDate(new Date(weekMon).getDate() + 6);
   const weekEndKey = dk(weekEnd);
   const isOnVacation = (vacations[member.id]||[]).some(v=>v.from<=weekEndKey && v.to>=weekMon);
   if(isOnVacation) return 0;
+  // Determine year/month from weekMon for correct week count
+  const wDate = new Date(weekMon); const yr = wDate.getFullYear(); const mo = wDate.getMonth();
   if(member.type==="reitbeteiligung") {
     const root = allMembers.find(m=>m.id===member.einstellerId);
     if(!root) return 1;
-    const beteiligungen = allMembers.filter(m=>m.einstellerId===root.id);
-    const rootShare = (root.mistShare??50) / 100;
-    const rbShare = (1 - rootShare) / beteiligungen.length;
-    return Math.max(1, Math.round(2 * rbShare));
+    return getRbWeekQuota(root, allMembers, yr, mo);
   }
-  return getBaseGroupQuota(member, allMembers);
+  return getBaseGroupQuota(member, allMembers, yr, mo);
 };
 const countMistMonth = (mistData, memberId, year, month) => {
   let count = 0;
@@ -422,67 +460,87 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
 }
 
 // ── Mist Split Widget ────────────────────────────────────────────────────────
-function MistSplitWidget({ currentUser, rbs, members, vacations, viewYear, viewMonth, saveMemberEdit, showToast }) {
-  const [open, setOpen] = useState(false);
+function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, saveMemberEdit, showToast }) {
+  const [open, setOpen]     = useState(false);
+  const [mode, setMode]     = useState(currentUser.mistMode||"percent");
+  const [value, setValue]   = useState(currentUser.mistShare??50);
 
-  // Use a reference of 4 weeks (8 total) for the "per month" setting display
-  // mistShare% stored → weekly = round(2 * share/100) → monthly = weekly * weeksThisMonth
   const weeks        = getWeeksInMonth(viewYear, viewMonth);
   const totalMonthly = weeks.length * 2;
-  const share        = currentUser.mistShare ?? 50;
-  const myMonthly    = Math.round(totalMonthly * share / 100);
-  const rbMonthly    = totalMonthly - myMonthly;
   const monthLabel   = new Date(viewYear, viewMonth, 1).toLocaleDateString("de-DE",{month:"long"});
 
-  // Edit state — in absolute Dienste for THIS month
-  const [myEdit, setMyEdit] = useState(myMonthly);
-  // Sync whenever currentUser.mistShare changes (after save)
+  // Sync after save
   useEffect(() => {
-    setMyEdit(Math.round(totalMonthly * ((currentUser.mistShare??50) / 100)));
-  }, [currentUser.mistShare, totalMonthly]);
+    setMode(currentUser.mistMode||"percent");
+    setValue(currentUser.mistShare??50);
+  }, [currentUser.mistMode, currentUser.mistShare]);
 
-  const rbEdit    = totalMonthly - myEdit;
-  const rbEach    = rbs.length > 0 ? (rbEdit / rbs.length) : 0;
-  // Convert absolute monthly count back to percent for storage
-  const editShare = totalMonthly > 0 ? Math.round(myEdit / totalMonthly * 100) : 50;
+  // Compute display values for current month
+  const getDisplayCounts = (m, v) => {
+    if(m==="percent") {
+      const my = Math.round(totalMonthly * v/100);
+      return { my, rb: totalMonthly - my };
+    }
+    if(m==="fixed_e") {
+      return { my: v, rb: Math.max(0, totalMonthly - v) };
+    }
+    if(m==="fixed_rb") {
+      const rbTotal = v * rbs.length;
+      return { my: Math.max(0, totalMonthly - rbTotal), rb: v };
+    }
+    return { my: 0, rb: 0 };
+  };
 
+  const current   = getDisplayCounts(currentUser.mistMode||"percent", currentUser.mistShare??50);
+  const preview   = getDisplayCounts(mode, value);
+
+  const handleOpen = () => {
+    setMode(currentUser.mistMode||"percent");
+    setValue(currentUser.mistShare??50);
+    setOpen(true);
+  };
   const handleSave = async () => {
-    await saveMemberEdit(currentUser.id, {...currentUser, mistShare: editShare, einstellerId: currentUser.einstellerId||""});
-    showToast("✅ Aufteilung gespeichert!");
+    await saveMemberEdit(currentUser.id, {...currentUser, mistShare: value, mistMode: mode, einstellerId: currentUser.einstellerId||""});
     setOpen(false);
   };
 
+  const MODES = [
+    { key:"percent",  label:"% Aufteilung",    icon:"⚖️" },
+    { key:"fixed_e",  label:"Meine Dienste",   icon:"🐴" },
+    { key:"fixed_rb", label:"Reitbet. Dienste",icon:"🤝" },
+  ];
+
+  const maxVal = mode==="percent" ? 100 : totalMonthly;
+  const minVal = 0;
+
   return (
     <>
-      {/* Summary for current month */}
       <div style={{marginTop:14,borderTop:"1px solid #f0e8d8",paddingTop:12}}>
         <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f",marginBottom:2}}>⚖️ Aufteilung {monthLabel}</div>
         <div style={{fontSize:11,color:"#8b6040"}}>
-          Du: <b>{myMonthly}×</b> · Reitbet.: <b>{rbMonthly}×</b> (von {totalMonthly} gesamt)
+          Du: <b>{current.my}×</b> · Reitbet.: <b>{rbs.length>1?`${(current.rb/rbs.length).toFixed(1)}× je`:`${current.rb}×`}</b> (von {totalMonthly} gesamt)
         </div>
       </div>
 
-      {/* Permanent monthly setting card */}
       <div style={{marginTop:10,background:"#faf6f0",borderRadius:10,padding:"12px 14px",border:"1px solid #e2d5c0"}}>
         <div style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <div>
             <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f"}}>📅 Dauereinstellung</div>
             <div style={{fontSize:10,color:"#8b6040"}}>Gilt für alle Monate</div>
           </div>
-          <button onClick={()=>{ setMyEdit(myMonthly); setOpen(true); }}
-            style={{...S.btn("light"),padding:"6px 12px",fontSize:12}}>✏️ Anpassen</button>
+          <button onClick={handleOpen} style={{...S.btn("light"),padding:"6px 12px",fontSize:12}}>✏️ Anpassen</button>
         </div>
         <div style={{...S.row,gap:6}}>
           <div style={{flex:1,textAlign:"center",padding:"8px 4px",background:"#fff",borderRadius:8,border:"1.5px solid #c8913a"}}>
             <div style={{fontSize:10,color:"#8b6040",marginBottom:2}}>Du</div>
-            <div style={{fontSize:20,fontWeight:700,color:"#c8913a"}}>{myMonthly}×</div>
+            <div style={{fontSize:20,fontWeight:700,color:"#c8913a"}}>{current.my}×</div>
             <div style={{fontSize:9,color:"#aaa"}}>/ Monat</div>
           </div>
-          <div style={{display:"flex",alignItems:"center",fontSize:16,color:"#ccc",padding:"0 4px"}}>⟷</div>
+          <div style={{display:"flex",alignItems:"center",fontSize:16,color:"#ccc",padding:"0 2px"}}>⟷</div>
           {rbs.map(rb=>(
             <div key={rb.id} style={{flex:1,textAlign:"center",padding:"8px 4px",background:"#fff",borderRadius:8,border:"1.5px solid #a8d8c8"}}>
               <div style={{fontSize:10,color:"#16a085",marginBottom:2}}>{rb.name.split(" ")[0]}</div>
-              <div style={{fontSize:20,fontWeight:700,color:"#16a085"}}>{(rbMonthly/rbs.length).toFixed(1)}×</div>
+              <div style={{fontSize:20,fontWeight:700,color:"#16a085"}}>{(current.rb/rbs.length).toFixed(1)}×</div>
               <div style={{fontSize:9,color:"#aaa"}}>/ Monat</div>
             </div>
           ))}
@@ -490,49 +548,74 @@ function MistSplitWidget({ currentUser, rbs, members, vacations, viewYear, viewM
       </div>
 
       {open&&(
-        <div style={S.modal}><div style={{...S.mBox,maxWidth:340}}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>Aufteilung anpassen</div>
-          <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>
-            {totalMonthly} Dienste im {monthLabel} · Einstellung gilt dauerhaft
+        <div style={S.modal}><div style={{...S.mBox,maxWidth:360}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:12,color:"#3d2b1f"}}>Aufteilung anpassen</div>
+
+          {/* Mode selector */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:18}}>
+            {MODES.map(m=>(
+              <button key={m.key} onClick={()=>{ setMode(m.key); setValue(m.key==="percent"?50:m.key==="fixed_e"?Math.round(totalMonthly/2):Math.round(totalMonthly/2/rbs.length)); }}
+                style={{padding:"10px 4px",borderRadius:10,border:`2px solid ${mode===m.key?"#c8913a":"#e2d5c0"}`,
+                  background:mode===m.key?"#fef3e2":"#fff",cursor:"pointer",textAlign:"center",
+                  color:mode===m.key?"#c8913a":"#8b6040",fontSize:10,fontWeight:mode===m.key?700:400,transition:"all .15s"}}>
+                <div style={{fontSize:16,marginBottom:3}}>{m.icon}</div>
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Mode description */}
+          <div style={{fontSize:11,color:"#8b6040",background:"#faf6f0",borderRadius:8,padding:"8px 12px",marginBottom:16}}>
+            {mode==="percent" && "Aufteilung in Prozent — passt sich automatisch an Monate mit mehr/weniger Wochen an."}
+            {mode==="fixed_e" && `Ich mache jeden Monat genau X Dienste — der Rest geht an die Reitbeteiligung.`}
+            {mode==="fixed_rb" && `Die Reitbeteiligung macht jeden Monat genau X Dienste — der Rest geht an mich.`}
           </div>
 
           {/* Visual split bar */}
-          <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",marginBottom:20,background:"#f0e8d8"}}>
-            <div style={{flex:myEdit||0.001,background:"#c8913a",transition:"flex .2s",borderRadius:myEdit===totalMonthly?"10px":"10px 0 0 10px"}}/>
-            <div style={{flex:rbEdit||0.001,background:"#a8d8c8",transition:"flex .2s",borderRadius:myEdit===0?"10px":"0 10px 10px 0"}}/>
+          <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",marginBottom:16,background:"#f0e8d8"}}>
+            <div style={{flex:preview.my||0.001,background:"#c8913a",transition:"flex .2s",borderRadius:preview.my===0?"0":"10px 0 0 10px"}}/>
+            <div style={{flex:preview.rb||0.001,background:"#a8d8c8",transition:"flex .2s",borderRadius:preview.rb===0?"0":"0 10px 10px 0"}}/>
           </div>
 
-          {/* Einsteller row */}
+          {/* Value input */}
           <div style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:12,padding:"12px 14px",background:"#faf6f0",borderRadius:10,border:"1.5px solid #c8913a"}}>
             <div>
-              <div style={{fontSize:13,fontWeight:700}}>{currentUser.name.split(" ")[0]} <span style={{fontSize:10,color:"#aaa"}}>(Du)</span></div>
-              <div style={{fontSize:11,color:"#8b6040"}}>{myEdit} Dienste im {monthLabel}</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#3d2b1f"}}>
+                {mode==="percent"?"Mein Anteil":mode==="fixed_e"?"Meine Dienste / Monat":"Dienste RB / Monat"}
+              </div>
+              <div style={{fontSize:11,color:"#8b6040",marginTop:2}}>
+                {mode==="percent" && `= ${preview.my} Dienste im ${monthLabel}`}
+                {mode==="fixed_e" && `RB bekommt ${preview.rb} Dienste im ${monthLabel}`}
+                {mode==="fixed_rb" && `Ich mache ${preview.my} Dienste im ${monthLabel}`}
+              </div>
             </div>
             <div style={{...S.row,gap:10,alignItems:"center"}}>
-              <button onClick={()=>setMyEdit(v=>Math.max(0,v-1))} disabled={myEdit<=0}
-                style={{width:34,height:34,borderRadius:17,border:"none",background:myEdit>0?"#e2d5c0":"#f5f0e8",
-                  cursor:myEdit>0?"pointer":"default",fontSize:20,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-              <div style={{width:30,textAlign:"center",fontWeight:700,fontSize:22,color:"#c8913a"}}>{myEdit}</div>
-              <button onClick={()=>setMyEdit(v=>Math.min(totalMonthly,v+1))} disabled={myEdit>=totalMonthly}
-                style={{width:34,height:34,borderRadius:17,border:"none",background:myEdit<totalMonthly?"#e2d5c0":"#f5f0e8",
-                  cursor:myEdit<totalMonthly?"pointer":"default",fontSize:20,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-            </div>
-          </div>
-
-          {/* Reitbeteiligung rows */}
-          {rbs.map(rb=>(
-            <div key={rb.id} style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:8,padding:"10px 14px",background:"#f0faf6",borderRadius:10,border:"1px solid #a8d8c8"}}>
-              <div>
-                <div style={{fontSize:12,fontWeight:600}}>{rb.name.split(" ")[0]}</div>
-                <div style={{fontSize:11,color:"#16a085"}}>{(rbEdit/rbs.length).toFixed(1)} Dienste im {monthLabel}</div>
+              <button onClick={()=>setValue(v=>Math.max(minVal,v-1))} disabled={value<=minVal}
+                style={{width:34,height:34,borderRadius:17,border:"none",background:value>minVal?"#e2d5c0":"#f5f0e8",
+                  cursor:value>minVal?"pointer":"default",fontSize:20,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+              <div style={{minWidth:42,textAlign:"center",fontWeight:700,fontSize:20,color:"#c8913a"}}>
+                {value}{mode==="percent"?"%":"×"}
               </div>
-              <div style={{fontWeight:700,fontSize:20,color:"#16a085"}}>{(rbEdit/rbs.length).toFixed(1)}</div>
+              <button onClick={()=>setValue(v=>Math.min(maxVal,v+1))} disabled={value>=maxVal}
+                style={{width:34,height:34,borderRadius:17,border:"none",background:value<maxVal?"#e2d5c0":"#f5f0e8",
+                  cursor:value<maxVal?"pointer":"default",fontSize:20,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
             </div>
-          ))}
-
-          <div style={{fontSize:10,color:"#aaa",textAlign:"center",margin:"10px 0 14px"}}>
-            {myEdit} + {rbEdit} = {totalMonthly} Dienste im {monthLabel}
           </div>
+
+          {/* Result preview */}
+          <div style={{...S.row,gap:6,marginBottom:16}}>
+            <div style={{flex:1,textAlign:"center",padding:"8px",background:"#fef3e2",borderRadius:8,border:"1px solid #c8913a"}}>
+              <div style={{fontSize:10,color:"#8b6040"}}>Du ({monthLabel})</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#c8913a"}}>{preview.my}×</div>
+            </div>
+            {rbs.map(rb=>(
+              <div key={rb.id} style={{flex:1,textAlign:"center",padding:"8px",background:"#f0faf6",borderRadius:8,border:"1px solid #a8d8c8"}}>
+                <div style={{fontSize:10,color:"#16a085"}}>{rb.name.split(" ")[0]}</div>
+                <div style={{fontSize:18,fontWeight:700,color:"#16a085"}}>{(preview.rb/rbs.length).toFixed(1)}×</div>
+              </div>
+            ))}
+          </div>
+
           <div style={{...S.row,justifyContent:"flex-end",gap:8}}>
             <button style={S.btn("light")} onClick={()=>setOpen(false)}>Abbrechen</button>
             <button style={S.btn("primary")} onClick={handleSave}>💾 Speichern</button>
@@ -1464,8 +1547,8 @@ export default function StallApp() {
   };
   const deleteMember = async id => { setMembers(p=>p.filter(m=>m.id!==id)); await sb.from("members").delete().eq("id",id); };
   const saveMemberEdit = async (id, editData) => {
-    const updates={name:editData.name,horse:editData.horse,phone:editData.phone,pin:editData.pin,type:editData.type,paid:editData.type==="reitbeteiligung"?null:(members.find(m=>m.id===id)?.paid??false),einsteller_id:editData.einstellerId?parseInt(editData.einstellerId):null,mist_share:editData.mistShare??50};
-    const updated = dbToMember({id,...updates,einsteller_id:updates.einsteller_id,mist_share:updates.mist_share});
+    const updates={name:editData.name,horse:editData.horse,phone:editData.phone,pin:editData.pin,type:editData.type,paid:editData.type==="reitbeteiligung"?null:(members.find(m=>m.id===id)?.paid??false),einsteller_id:editData.einstellerId?parseInt(editData.einstellerId):null,mist_share:editData.mistShare??50,mist_mode:editData.mistMode||"percent"};
+    const updated = dbToMember({id,...updates,einsteller_id:updates.einsteller_id,mist_share:updates.mist_share,mist_mode:updates.mist_mode});
     setMembers(p=>p.map(m=>m.id===id?{...m,...updated}:m));
     if(currentUser?.id===id) setCurrentUser(prev=>({...prev,...updated}));
     await sb.from("members").update(updates).eq("id",id);
