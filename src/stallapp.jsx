@@ -626,66 +626,63 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
   );
 }
 
-function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacations, showAddMember, setShowAddMember, newMember, setNewMember, addMember, deleteMember, saveMemberEdit, getVacationLabel, editId, setEditId, editData, setEditData, pinMode, setPinMode, pins, setPins, pinErr, setPinErr, showToast }) {
-  const startEdit = m => { setEditId(m.id); setEditData({name:m.name,horse:m.horse,phone:m.phone||"",pin:m.pin,type:m.type,einstellerId:m.einstellerId||""}); };
-  const cancelEdit = () => setEditId(null);
-  const saveEdit = async id => {
-    if(!editData.name||!editData.pin) return;
-    await saveMemberEdit(id, editData);
-    setEditId(null);
-  };
+function MRow({ m, isChild, isAdmin, einstellerList, editId, editData, setEditData, deleteMember, getVacationLabel, startEdit, cancelEdit, saveEdit }) {
   const inS = {...S.input,marginBottom:6,padding:"8px 10px",fontSize:12};
   const lS  = {...S.label,marginBottom:2};
+  const isEditing = isAdmin&&editId===m.id;
+  const avBg = m.type==="admin"?"linear-gradient(135deg,#c8913a,#f5c842)":isChild?"linear-gradient(135deg,#7f8c8d,#aaa)":undefined;
+  const avSz = isChild?{width:30,height:30,fontSize:12}:{};
+  return (
+    <div style={isChild?{paddingLeft:14,paddingTop:10,borderTop:"1px dashed #f0e8d8"}:{}}>
+      {!isEditing?(
+        <div style={{...S.row,justifyContent:"space-between"}}>
+          <div style={{...S.row,gap:10}}>
+            <div style={{...S.ava(avBg),...avSz}}>{m.name.charAt(0)}</div>
+            <div>
+              <div style={{fontWeight:600,fontSize:isChild?12:13}}>{m.name} {m.type==="admin"&&<span style={{fontSize:10,color:"#c8913a"}}>👑</span>}</div>
+              <div style={{fontSize:11,color:"#8b6040"}}>{m.type==="reitbeteiligung"?"🤝 Reitbeteiligung":m.type==="admin"?"👑 Admin":"🐴 Einsteller"}{m.horse?` · ${m.horse}`:""}</div>
+              {isAdmin&&<><div style={{fontSize:10,color:"#aaa"}}>{m.phone&&`📞 ${m.phone}`}</div><div style={{fontSize:10,color:"#b89060"}}>PIN: {m.pin}</div></>}
+              {getVacationLabel(m.id)&&<div style={{fontSize:10,color:"#16a085",marginTop:2}}>{getVacationLabel(m.id)}</div>}
+            </div>
+          </div>
+          {isAdmin&&(
+            <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
+              <button onClick={()=>startEdit(m)} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,color:"#8b6040"}}>✏️ Bearbeiten</button>
+              {m.type!=="admin"&&<button onClick={()=>deleteMember(m.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:"2px 4px"}}><Ic n="x" s={13}/></button>}
+            </div>
+          )}
+        </div>
+      ):(
+        <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#c8913a",marginBottom:10}}>✏️ Bearbeiten: {m.name}</div>
+          <label style={lS}>Name</label><input style={inS} value={editData.name} onChange={e=>setEditData(p=>({...p,name:e.target.value}))}/>
+          <label style={lS}>Pferd</label><input style={inS} value={editData.horse} onChange={e=>setEditData(p=>({...p,horse:e.target.value}))}/>
+          <label style={lS}>Telefon</label><input style={inS} value={editData.phone} onChange={e=>setEditData(p=>({...p,phone:e.target.value}))}/>
+          <label style={lS}>PIN zurücksetzen</label><input style={inS} maxLength={4} value={editData.pin} onChange={e=>setEditData(p=>({...p,pin:e.target.value.replace(/\D/,"")}))}/>
+          {m.type!=="admin"&&<><label style={lS}>Typ</label>
+            <select style={inS} value={editData.type} onChange={e=>setEditData(p=>({...p,type:e.target.value,einstellerId:""}))}>
+              <option value="einsteller">🐴 Einsteller</option><option value="reitbeteiligung">🤝 Reitbeteiligung</option>
+            </select></>}
+          {editData.type==="reitbeteiligung"&&<><label style={lS}>Gehört zu Einsteller</label>
+            <select style={inS} value={editData.einstellerId} onChange={e=>setEditData(p=>({...p,einstellerId:e.target.value}))}>
+              <option value="">— bitte wählen —</option>
+              {einstellerList.filter(x=>x.id!==m.id).map(x=><option key={x.id} value={x.id}>{x.name} ({x.horse})</option>)}
+            </select></>}
+          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+            <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={cancelEdit}>Abbrechen</button>
+            <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={()=>saveEdit(m.id)}>💾 Speichern</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const MRow = ({m, isChild}) => {
-    const isEditing = isAdmin&&editId===m.id;
-    const avBg = m.type==="admin"?"linear-gradient(135deg,#c8913a,#f5c842)":isChild?"linear-gradient(135deg,#7f8c8d,#aaa)":undefined;
-    const avSz = isChild?{width:30,height:30,fontSize:12}:{};
-    return (
-      <div style={isChild?{paddingLeft:14,paddingTop:10,borderTop:"1px dashed #f0e8d8"}:{}}>
-        {!isEditing?(
-          <div style={{...S.row,justifyContent:"space-between"}}>
-            <div style={{...S.row,gap:10}}>
-              <div style={{...S.ava(avBg),...avSz}}>{m.name.charAt(0)}</div>
-              <div>
-                <div style={{fontWeight:600,fontSize:isChild?12:13}}>{m.name} {m.type==="admin"&&<span style={{fontSize:10,color:"#c8913a"}}>👑</span>}</div>
-                <div style={{fontSize:11,color:"#8b6040"}}>{m.type==="reitbeteiligung"?"🤝 Reitbeteiligung":m.type==="admin"?"👑 Admin":"🐴 Einsteller"}{m.horse?` · ${m.horse}`:""}</div>
-                {isAdmin&&<><div style={{fontSize:10,color:"#aaa"}}>{m.phone&&`📞 ${m.phone}`}</div><div style={{fontSize:10,color:"#b89060"}}>PIN: {m.pin}</div></>}
-                {getVacationLabel(m.id)&&<div style={{fontSize:10,color:"#16a085",marginTop:2}}>{getVacationLabel(m.id)}</div>}
-              </div>
-            </div>
-            {isAdmin&&(
-              <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
-                <button onClick={()=>startEdit(m)} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:600,color:"#8b6040"}}>✏️ Bearbeiten</button>
-                {m.type!=="admin"&&<button onClick={()=>deleteMember(m.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:"2px 4px"}}><Ic n="x" s={13}/></button>}
-              </div>
-            )}
-          </div>
-        ):(
-          <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#c8913a",marginBottom:10}}>✏️ Bearbeiten: {m.name}</div>
-            <label style={lS}>Name</label><input style={inS} value={editData.name} onChange={e=>setEditData(p=>({...p,name:e.target.value}))}/>
-            <label style={lS}>Pferd</label><input style={inS} value={editData.horse} onChange={e=>setEditData(p=>({...p,horse:e.target.value}))}/>
-            <label style={lS}>Telefon</label><input style={inS} value={editData.phone} onChange={e=>setEditData(p=>({...p,phone:e.target.value}))}/>
-            <label style={lS}>PIN zurücksetzen</label><input style={inS} maxLength={4} value={editData.pin} onChange={e=>setEditData(p=>({...p,pin:e.target.value.replace(/\D/,"")}))}/>
-            {m.type!=="admin"&&<><label style={lS}>Typ</label>
-              <select style={inS} value={editData.type} onChange={e=>setEditData(p=>({...p,type:e.target.value,einstellerId:""}))}>
-                <option value="einsteller">🐴 Einsteller</option><option value="reitbeteiligung">🤝 Reitbeteiligung</option>
-              </select></>}
-            {editData.type==="reitbeteiligung"&&<><label style={lS}>Gehört zu Einsteller</label>
-              <select style={inS} value={editData.einstellerId} onChange={e=>setEditData(p=>({...p,einstellerId:e.target.value}))}>
-                <option value="">— bitte wählen —</option>
-                {einstellerList.filter(x=>x.id!==m.id).map(x=><option key={x.id} value={x.id}>{x.name} ({x.horse})</option>)}
-              </select></>}
-            <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
-              <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={cancelEdit}>Abbrechen</button>
-              <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={()=>saveEdit(m.id)}>💾 Speichern</button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
+function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacations, showAddMember, setShowAddMember, newMember, setNewMember, addMember, deleteMember, saveMemberEdit, getVacationLabel, editId, setEditId, editData, setEditData, pinMode, setPinMode, pins, setPins, pinErr, setPinErr, showToast }) {
+  const startEdit  = m => { setEditId(m.id); setEditData({name:m.name,horse:m.horse,phone:m.phone||"",pin:m.pin,type:m.type,einstellerId:m.einstellerId||""}); };
+  const cancelEdit = () => setEditId(null);
+  const saveEdit   = async id => { if(!editData.name||!editData.pin) return; await saveMemberEdit(id, editData); setEditId(null); };
+  const rowProps   = { isAdmin, einstellerList, editId, editData, setEditData, deleteMember, getVacationLabel, startEdit, cancelEdit, saveEdit };
 
   return (
     <div>
@@ -729,8 +726,8 @@ function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacation
       )}
       {einstellerList.map(e=>(
         <div key={e.id} style={S.card}>
-          <MRow m={e} isChild={false}/>
-          {members.filter(m=>m.einstellerId===e.id).map(rb=><MRow key={rb.id} m={rb} isChild={true}/>)}
+          <MRow m={e} isChild={false} {...rowProps}/>
+          {members.filter(m=>m.einstellerId===e.id).map(rb=><MRow key={rb.id} m={rb} isChild={true} {...rowProps}/>)}
         </div>
       ))}
       {isAdmin&&<div style={{margin:"14px 16px 0"}}><button style={{...S.btn("primary"),width:"100%",padding:14}} onClick={()=>setShowAddMember(true)}>+ Mitglied hinzufügen</button></div>}
