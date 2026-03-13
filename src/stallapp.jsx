@@ -555,15 +555,35 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
           {(()=>{
             const mQ=getMonthlyQuota(currentUser,members,vacations,viewYear,viewMonth);
             const mC=countMistMonth(mistData,currentUser.id,viewYear,viewMonth);
-            return (
-              <div style={{...S.row,justifyContent:"space-between",background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+            // Freeze warning: show when viewing current month and within 7 days of the 7th
+            const isCurrentMonth = viewYear===today.getFullYear() && viewMonth===today.getMonth();
+            const freezeDay = 7;
+            const daysLeft = isCurrentMonth ? freezeDay - today.getDate() : null;
+            const showWarning = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7 && mC < mQ;
+            const freezeDate = new Date(viewYear, viewMonth, freezeDay);
+            const freezeLabel = freezeDate.toLocaleDateString("de-DE",{day:"numeric",month:"long"});
+            return (<>
+              <div style={{...S.row,justifyContent:"space-between",background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:showWarning?8:12}}>
                 <div>
                   <div style={{fontSize:12,color:"#8b6040"}}>Mein Monatssoll</div>
                   <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:mC>=mQ?"#27ae60":"#c0392b",fontWeight:700}}>{mC}<span style={{fontSize:13,color:"#aaa"}}>/{mQ}×</span>{mC>mQ&&<span style={{fontSize:12,color:"#c8913a",marginLeft:4}}>🌟</span>}</div>
                 </div>
                 <div style={{fontSize:24}}>{mC>=mQ?"✅":"⏳"}</div>
               </div>
-            );
+              {showWarning&&(
+                <div style={{background:daysLeft<=2?"#fdecea":"#fef9ec",border:`1.5px solid ${daysLeft<=2?"#f5c0c0":"#f0d080"}`,borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",gap:10,alignItems:"center"}}>
+                  <div style={{fontSize:20}}>{daysLeft===0?"🔔":daysLeft<=2?"⚠️":"⏰"}</div>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:daysLeft<=2?"#922b21":"#7d6008"}}>
+                      {daysLeft===0?"Heute ist der letzte Tag!":daysLeft===1?"Noch 1 Tag zum Eintragen!":`Noch ${daysLeft} Tage zum Eintragen`}
+                    </div>
+                    <div style={{fontSize:11,color:daysLeft<=2?"#c0392b":"#9a7d0a",marginTop:1}}>
+                      Bitte bis {freezeLabel} deinen Mistdienst eintragen
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>);
           })()}
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:6}}>
             {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
