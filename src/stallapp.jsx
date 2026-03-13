@@ -989,9 +989,16 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
     let nm=viewMonth+1, ny=viewYear;
     if(nm>11){nm=0;ny++;}
     // Replace carryover (don't accumulate — corrections would double-count)
-    await saveFinMonth(memberId, ny, nm, {carryover: Number(diff.toFixed(2))});
+    // diff = pay - total: negative means underpaid (surcharge next month), positive means overpaid (discount next month)
+    // carryover is ADDED to next month's total, so sign stays: underpaid = negative carryover WRONG
+    // Actually: carryover added to total means: -20 carryover → total goes DOWN → wrong
+    // We need: underpaid (diff=-20) → next month total goes UP → carryover = -diff = +20... 
+    // BUT: overpaid (diff=+20) → next month total goes DOWN → carryover = -diff = -20
+    // So: carryover = -diff (negate)
+    await saveFinMonth(memberId, ny, nm, {carryover: Number((-diff).toFixed(2))});
     if(directAmount===undefined) setEditPay(p=>({...p,[memberId]:undefined}));
-    showToast(diff!==0?`💾 Zahlung gespeichert · Übertrag: ${diff>0?"+":""}${diff.toFixed(2)}€`:"💾 Zahlung gespeichert!");
+    const carryover = -diff;
+    showToast(diff!==0?`💾 Zahlung gespeichert · Nächster Monat: ${carryover>0?"+":""}${carryover.toFixed(2)}€`:"💾 Zahlung gespeichert!");
   };
 
   const handleAddExtra = async (memberId) => {
@@ -1038,7 +1045,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
           </div>
           <div style={{marginTop:12,padding:"8px 12px",borderRadius:10,background:paid?"rgba(255,255,255,.1)":"rgba(192,57,43,.3)"}}>
             {paid
-              ? <span style={{fontSize:12,fontWeight:600}}>✓ Zahlung eingegangen: {Number(fm.payment).toFixed(2)}€{diff!==0?` · Übertrag nächsten Monat: ${diff>0?"+":""}${diff?.toFixed(2)}€`:""}</span>
+              ? <span style={{fontSize:12,fontWeight:600}}>✓ Zahlung eingegangen: {Number(fm.payment).toFixed(2)}€{diff!==0?` · Nächster Monat: ${diff<0?"+":""}${(-diff).toFixed(2)}€`:""}</span>
               : <span style={{fontSize:12,fontWeight:600,color:"#ffb3a7"}}>⏳ Zahlung noch ausstehend</span>}
           </div>
         </div>
@@ -1226,7 +1233,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
                 </label>
               </div>
               {paid&&<div style={{fontSize:12,color:"#555",marginBottom:4}}>Betrag: <b>{Number(fm.payment).toFixed(2)}€</b>
-                {diff!==0&&<span style={{fontSize:11,color:diff>0?"#27ae60":"#c0392b",marginLeft:8}}>→ Übertrag: {diff>0?"+":""}{diff.toFixed(2)}€</span>}
+                {diff!==0&&<span style={{fontSize:11,color:diff<0?"#c0392b":"#27ae60",marginLeft:8}}>→ Nächster Monat: {diff<0?"+":""}{(-diff).toFixed(2)}€</span>}
               </div>}
               {/* Abweichung eintragen */}
               <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>Abweichender Betrag?</div>
