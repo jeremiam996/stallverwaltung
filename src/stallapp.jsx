@@ -1024,7 +1024,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
     const fm    = getFinMonth(m.id, viewYear, viewMonth);
     const base  = getBaseFee(m.id);
     const extras= fm.extras||[];
-    const carry = Number(fm.carryover||0);
+    const carry = calcCarryover(m.id, viewYear, viewMonth);
     const total = calcTotal(m.id, viewYear, viewMonth);
     const paid  = fm.payment!==null&&fm.payment!==undefined;
     const diff  = paid ? Number((fm.payment - total).toFixed(2)) : null;
@@ -1041,7 +1041,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
           <div style={{fontSize:11,color:"#d4b88a",marginTop:4}}>
             Grundgebühr {base.toFixed(2)}€
             {extras.length>0&&` + Extras ${extras.reduce((a,e)=>a+Number(e.amount),0).toFixed(2)}€`}
-            {carry!==0&&` ${carry>0?"+":""} ${carry.toFixed(2)}€ Übertrag`}
+            {carry!==0&&` ${carry>0?"-":"+"}${Math.abs(carry).toFixed(2)}€ Übertrag`}
           </div>
           <div style={{marginTop:12,padding:"8px 12px",borderRadius:10,background:paid?"rgba(255,255,255,.1)":"rgba(192,57,43,.3)"}}>
             {paid
@@ -1070,7 +1070,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
           {carry!==0&&(
             <div style={{...S.row,justifyContent:"space-between",padding:"7px 0",borderTop:"1px solid #f0e8d8",marginTop:4}}>
               <div style={{fontSize:12,color:"#8b6040"}}>Übertrag Vormonat</div>
-              <span style={{fontWeight:700,fontSize:13,color:carry>0?"#27ae60":"#c0392b"}}>{carry>0?"+":""}{carry.toFixed(2)}€</span>
+              <span style={{fontWeight:700,fontSize:13,color:carry>0?"#c0392b":"#27ae60"}}>{carry<0?"+":"-"}{Math.abs(carry).toFixed(2)}€</span>
             </div>
           )}
           <div style={{...S.row,justifyContent:"space-between",padding:"10px 0 0",borderTop:"2px solid #e2d5c0",marginTop:6}}>
@@ -1138,7 +1138,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
       </div>
       {einsteller.map(m=>{
         const fm=getFinMonth(m.id,viewYear,viewMonth); const base=getBaseFee(m.id);
-        const extras=fm.extras||[]; const carry=Number(fm.carryover||0);
+        const extras=fm.extras||[]; const carry=calcCarryover(m.id,viewYear,viewMonth);
         const total=calcTotal(m.id,viewYear,viewMonth); const paid=fm.payment!==null&&fm.payment!==undefined;
         const diff=paid?Number((fm.payment-total).toFixed(2)):null;
         const editingFee=editFee[m.id]!==undefined; const editingPay=editPay[m.id]!==undefined;
@@ -1211,7 +1211,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
             {carry!==0&&(
               <div style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
                 <div style={{fontSize:11,color:"#8b6040"}}>Übertrag Vormonat</div>
-                <span style={{fontSize:12,fontWeight:600,color:carry>0?"#27ae60":"#c0392b"}}>{carry>0?"+":""}{carry.toFixed(2)}€</span>
+                <span style={{fontSize:12,fontWeight:600,color:carry>0?"#c0392b":"#27ae60"}}>{carry<0?"+":"-"}{Math.abs(carry).toFixed(2)}€</span>
               </div>
             )}
             <div style={{...S.row,justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #e2d5c0"}}>
@@ -1453,9 +1453,33 @@ export default function StallApp() {
   const fmKey       = (memberId,year,month) => memberId+"_"+year+"-"+String(month+1).padStart(2,"0");
   const getFinMonth = (memberId,year,month) => finMonths[fmKey(memberId,year,month)]||{extras:[],payment:null,carryover:0,notes:""};
   const getBaseFee  = (memberId) => finAccounts[memberId]?.baseFee||0;
+  const calcCarryover = (memberId, year, month) => {
+    // Calculate previous month's underpayment/overpayment live, ignoring stored carryover
+    let pm = month - 1, py = year;
+    if(pm < 0) { pm = 11; py--; }
+    const prevFm = getFinMonth(memberId, py, pm);
+    if(prevFm.payment === null || prevFm.payment === undefined) return 0;
+    const prevBase = getBaseFee(memberId);
+    const prevExtras = (prevFm.extras||[]).reduce((a,e)=>a+Number(e.amount),0);
+    const prevCarry = calcCarryoverRaw(memberId, py, pm); // recursive one level only
+    const prevTotal = prevBase + prevExtras + prevCarry;
+    return Number((prevTotal - prevFm.payment).toFixed(2)); // positive = owes more, negative = credit
+  };
+  const calcCarryoverRaw = (memberId, year, month) => {
+    let pm = month - 1, py = year;
+    if(pm < 0) { pm = 11; py--; }
+    const prevFm = getFinMonth(memberId, py, pm);
+    if(prevFm.payment === null || prevFm.payment === undefined) return 0;
+    const prevBase = getBaseFee(memberId);
+    const prevExtras = (prevFm.extras||[]).reduce((a,e)=>a+Number(e.amount),0);
+    const prevTotal = prevBase + prevExtras;
+    return Number((prevTotal - prevFm.payment).toFixed(2));
+  };
   const calcTotal   = (memberId,year,month) => {
     const fm=getFinMonth(memberId,year,month); const base=getBaseFee(memberId);
-    return base+(fm.extras||[]).reduce((a,e)=>a+Number(e.amount),0)+Number(fm.carryover||0);
+    const extras=(fm.extras||[]).reduce((a,e)=>a+Number(e.amount),0);
+    const carry=calcCarryover(memberId,year,month);
+    return base+extras+carry;
   };
   const saveFinMonth = async (memberId,year,month,data) => {
     const key=fmKey(memberId,year,month); const mon=year+"-"+String(month+1).padStart(2,"0");
