@@ -471,8 +471,9 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
 
   // Sync after save
   useEffect(() => {
-    setMode(currentUser.mistMode||"percent");
-    setValue(currentUser.mistShare??50);
+    const m = currentUser.mistMode||"percent";
+    setMode(m);
+    setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : currentUser.mistShare??50);
   }, [currentUser.mistMode, currentUser.mistShare]);
 
   // Compute display values for current month
@@ -495,8 +496,9 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
   const preview   = getDisplayCounts(mode, value);
 
   const handleOpen = () => {
-    setMode(currentUser.mistMode||"percent");
-    setValue(currentUser.mistShare??50);
+    const m = currentUser.mistMode||"percent";
+    setMode(m);
+    setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : currentUser.mistShare??50);
     setOpen(true);
   };
   const handleSave = async () => {
@@ -512,6 +514,7 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
 
   const maxVal = mode==="percent" ? 100 : totalMonthly;
   const minVal = 0;
+  const step   = mode==="percent" ? 10 : 1;
 
   return (
     <>
@@ -554,7 +557,7 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
           {/* Mode selector */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:18}}>
             {MODES.map(m=>(
-              <button key={m.key} onClick={()=>{ setMode(m.key); setValue(m.key==="percent"?50:m.key==="fixed_e"?Math.round(totalMonthly/2):Math.round(totalMonthly/2/rbs.length)); }}
+              <button key={m.key} onClick={()=>{ setMode(m.key); setValue(m.key==="percent"?Math.round((currentUser.mistShare??50)/10)*10:m.key==="fixed_e"?Math.round(totalMonthly/2):Math.round(totalMonthly/2/rbs.length)); }}
                 style={{padding:"10px 4px",borderRadius:10,border:`2px solid ${mode===m.key?"#c8913a":"#e2d5c0"}`,
                   background:mode===m.key?"#fef3e2":"#fff",cursor:"pointer",textAlign:"center",
                   color:mode===m.key?"#c8913a":"#8b6040",fontSize:10,fontWeight:mode===m.key?700:400,transition:"all .15s"}}>
@@ -590,13 +593,13 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
               </div>
             </div>
             <div style={{...S.row,gap:10,alignItems:"center"}}>
-              <button onClick={()=>setValue(v=>Math.max(minVal,v-1))} disabled={value<=minVal}
+              <button onClick={()=>setValue(v=>Math.max(minVal,v-step))} disabled={value<=minVal}
                 style={{width:34,height:34,borderRadius:17,border:"none",background:value>minVal?"#e2d5c0":"#f5f0e8",
                   cursor:value>minVal?"pointer":"default",fontSize:20,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
               <div style={{minWidth:42,textAlign:"center",fontWeight:700,fontSize:20,color:"#c8913a"}}>
                 {value}{mode==="percent"?"%":"×"}
               </div>
-              <button onClick={()=>setValue(v=>Math.min(maxVal,v+1))} disabled={value>=maxVal}
+              <button onClick={()=>setValue(v=>Math.min(maxVal,v+step))} disabled={value>=maxVal}
                 style={{width:34,height:34,borderRadius:17,border:"none",background:value<maxVal?"#e2d5c0":"#f5f0e8",
                   cursor:value<maxVal?"pointer":"default",fontSize:20,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
             </div>
