@@ -207,16 +207,22 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
 
   const getDayInfo = (day) => {
     const k = dkl(day);
-    const myMist  = (mistData[k]||[]).includes(currentUser.id);
-    const myVac   = isOnVacationDay(currentUser.id, k, vacations);
-    const dayEvts = events.filter(e=>e.date===k);
-    return { k, myMist, myVac, dayEvts };
+    const myMist   = (mistData[k]||[]).includes(currentUser.id);
+    const myVac    = isOnVacationDay(currentUser.id, k, vacations);
+    const dayEvts  = events.filter(e=>e.date===k);
+    // Admin/other Einsteller vacations visible for Einsteller
+    const adminVacs = !isAdmin ? members
+      .filter(m=>(m.type==="admin"||m.type==="einsteller")&&m.id!==currentUser.id)
+      .flatMap(m=>(vacations[m.id]||[]).filter(v=>v.from<=k&&v.to>=k).map(v=>({...v, memberName:m.name.split(" ")[0]})))
+      : [];
+    return { k, myMist, myVac, dayEvts, adminVacs };
   };
   const getDots = (info, isSelected) => {
     const dots = [];
     if(info.myVac)  dots.push("#16a085");
     if(info.myMist) dots.push("#c8913a");
     info.dayEvts.forEach(e=>dots.push(e.color));
+    if(info.adminVacs?.length>0) dots.push("#b0b0b0");
     return dots.map((c,i)=>(
       <div key={i} style={{width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":c,flexShrink:0}}/>
     ));
@@ -325,7 +331,9 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             const info       = getDayInfo(day);
             const isToday    = info.k===dkl(today);
             const isSelected = selDay && dkl(day)===dkl(selDay);
-            const hasContent = info.myMist||info.myVac||info.dayEvts.length>0;
+            const hasAdminVac = info.adminVacs?.length>0;
+            const hasMustCover = info.adminVacs?.some(v=>v.mustCover);
+            const hasContent = info.myMist||info.myVac||info.dayEvts.length>0||hasAdminVac;
             const dots       = getDots(info, isSelected);
             return (
               <div key={info.k}
@@ -334,8 +342,8 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
                   aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",
                   alignItems:"center",justifyContent:"center",gap:2,
                   cursor:hasContent?"pointer":"default",
-                  background:isSelected?"#3d2b1f":info.myMist?"#f5e8d4":info.myVac?"#e8f8f5":"#fff",
-                  border:isToday?"2px solid #c8913a":isSelected?"2px solid #3d2b1f":"1px solid #ede5d5",
+                  background:isSelected?"#3d2b1f":info.myMist?"#f5e8d4":info.myVac?"#e8f8f5":hasAdminVac?"#f7f7f7":"#fff",
+                  border:isToday?"2px solid #c8913a":isSelected?"2px solid #3d2b1f":hasMustCover?"1.5px dashed #e74c3c":hasAdminVac?"1px dashed #ccc":"1px solid #ede5d5",
                   transition:"all .15s"
                 }}>
                 <div style={{fontSize:10,fontWeight:isToday?700:400,color:isSelected?"#fff":info.myMist?"#c8913a":"#2c2416"}}>{day.getDate()}</div>
@@ -348,6 +356,7 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
           <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c8913a",display:"inline-block"}}/> Mein Mist</span>
           <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#16a085",display:"inline-block"}}/> Urlaub</span>
           <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c0392b",display:"inline-block"}}/> Termin</span>
+          {!isAdmin&&<span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#ccc",display:"inline-block"}}/> Anderer Urlaub</span>}
         </div>
         {selInfo&&(
           <div style={{marginTop:12,background:"#faf6f0",borderRadius:10,padding:"10px 14px",border:"1px solid #e2d5c0"}}>
@@ -366,6 +375,15 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
                 <span style={{fontSize:12,color:"#c8913a",fontWeight:600}}>🧹 Dein Mistdienst</span>
               </div>
             )}
+            {selInfo.adminVacs?.map((v,i)=>(
+              <div key={i} style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:v.mustCover?"#fdf0ee":"#f5f5f5",borderRadius:7,border:v.mustCover?"1px solid #f5c6c0":"1px solid #e8e8e8"}}>
+                <span style={{fontSize:12}}>{v.mustCover?"🔴":"🌴"}</span>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:v.mustCover?"#c0392b":"#555"}}>{v.memberName} – Urlaub{v.mustCover?" · Vertretung nötig":""}</div>
+                  {v.note&&<div style={{fontSize:10,color:"#aaa"}}>{v.note}</div>}
+                </div>
+              </div>
+            ))}
             {selInfo.dayEvts.map(e=>(
               <div key={e.id} style={{...S.row,gap:8,marginBottom:6}}>
                 <span style={{width:10,height:10,borderRadius:"50%",background:e.color,flexShrink:0}}/>
@@ -400,17 +418,23 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
   );
 }
 
-function CalendarScreen({ currentUser, isAdmin, members, events, vacations, einstellerList, showAddVacation, setShowAddVacation, newVac, setNewVac, vacTargetId, openAddVacation, addVacation, deleteVacation, updateVacation, deleteEvent, setShowAddEvent }) {
-  const [editVac, setEditVac] = useState(null); // {memberId, vac}
+function CalendarScreen({ currentUser, isAdmin, members, events, vacations, einstellerList, showAddVacation, setShowAddVacation, newVac, setNewVac, vacTargetId, openAddVacation, addVacation, deleteVacation, updateVacation, deleteEvent, updateEvent, setShowAddEvent }) {
+  const [editVac, setEditVac] = useState(null);
   const [editForm, setEditForm] = useState({from:"",to:"",note:"",mustCover:false});
-  const openEditVac = (memberId, vac) => {
-    setEditVac({memberId, vac});
-    setEditForm({from:vac.from, to:vac.to, note:vac.note, mustCover:vac.mustCover||false});
-  };
+  const [editEvt, setEditEvt] = useState(null); // event object being edited
+  const [editEvtForm, setEditEvtForm] = useState({type:"",date:"",time:"",note:""});
+
+  const openEditVac = (memberId, vac) => { setEditVac({memberId,vac}); setEditForm({from:vac.from,to:vac.to,note:vac.note,mustCover:vac.mustCover||false}); };
   const saveEditVac = async () => {
-    if(!editForm.from||!editForm.to||editForm.from>editForm.to){ return; }
+    if(!editForm.from||!editForm.to||editForm.from>editForm.to) return;
     await updateVacation(editVac.memberId, editVac.vac.id, editForm);
     setEditVac(null);
+  };
+  const openEditEvt = (e) => { setEditEvt(e); setEditEvtForm({type:e.type,date:e.date,time:e.time||"",note:e.note||""}); };
+  const saveEditEvt = async () => {
+    if(!editEvtForm.date) return;
+    await updateEvent(editEvt.id, editEvtForm);
+    setEditEvt(null);
   };
   const canAdd = isAdmin || currentUser.type==="einsteller";
   return (
@@ -422,7 +446,7 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
         </div>
         {!canAdd&&<div style={{background:"#f5f0e8",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#8b6040",marginBottom:12}}>📅 Termine werden von Einstellern und Admin verwaltet</div>}
         {[...events].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
-          const canDelete = isAdmin || e.createdBy===currentUser.name;
+          const canAct = isAdmin || e.createdBy===currentUser.name;
           return (
             <div key={e.id} style={{display:"flex",gap:10,marginBottom:12,alignItems:"flex-start"}}>
               <div style={{width:5,borderRadius:4,background:e.color,alignSelf:"stretch",flexShrink:0,minHeight:40}}/>
@@ -435,7 +459,12 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
                 {e.note&&<div style={{fontSize:11,color:"#666",marginTop:2}}>{e.note}</div>}
                 {e.createdBy&&<div style={{fontSize:10,color:"#b89060",marginTop:3}}>👤 {e.createdBy}</div>}
               </div>
-              {canDelete&&<button onClick={()=>deleteEvent(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="x" s={14}/></button>}
+              {canAct&&(
+                <div style={{...S.row,gap:4,flexShrink:0}}>
+                  <button onClick={()=>openEditEvt(e)} style={{background:"#f0e8d8",border:"none",cursor:"pointer",color:"#8b6040",padding:"4px 8px",borderRadius:6,fontSize:11}}>✏️</button>
+                  <button onClick={()=>deleteEvent(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="x" s={14}/></button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -538,6 +567,26 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
           <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
             <button style={S.btn("light")} onClick={()=>setEditVac(null)}>Abbrechen</button>
             <button style={S.btn("teal")} onClick={saveEditVac}>💾 Speichern</button>
+          </div>
+        </div></div>
+      )}
+
+      {editEvt&&(
+        <div style={S.modal}><div style={S.mBox}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>✏️ Termin bearbeiten</div>
+          <label style={S.label}>Typ</label>
+          <select style={S.input} value={editEvtForm.type} onChange={e=>setEditEvtForm(p=>({...p,type:e.target.value}))}>
+            {EVENT_TYPES.map(t=><option key={t}>{t}</option>)}
+          </select>
+          <label style={S.label}>Datum</label>
+          <input type="date" style={S.input} value={editEvtForm.date} onChange={e=>setEditEvtForm(p=>({...p,date:e.target.value}))}/>
+          <label style={S.label}>Uhrzeit</label>
+          <input type="time" style={S.input} value={editEvtForm.time} onChange={e=>setEditEvtForm(p=>({...p,time:e.target.value}))}/>
+          <label style={S.label}>Notiz</label>
+          <input style={S.input} placeholder="z.B. Alle Pferde" value={editEvtForm.note} onChange={e=>setEditEvtForm(p=>({...p,note:e.target.value}))}/>
+          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+            <button style={S.btn("light")} onClick={()=>setEditEvt(null)}>Abbrechen</button>
+            <button style={S.btn("primary")} onClick={saveEditEvt}>💾 Speichern</button>
           </div>
         </div></div>
       )}
@@ -1613,6 +1662,12 @@ export default function StallApp() {
     setNewEvent({type:"Tierarzt",date:"",time:"",note:""}); setShowAddEvent(false);
   };
   const deleteEvent = async id => { setEvents(p=>p.filter(e=>e.id!==id)); await sb.from("events").delete().eq("id",id); };
+  const updateEvent = async (id, data) => {
+    const updates = {type:data.type, date:data.date, time:data.time, note:data.note, color:EVENT_COLORS[data.type]||"#7f8c8d"};
+    setEvents(p=>p.map(e=>e.id===id?{...e,...updates}:e));
+    await sb.from("events").update(updates).eq("id",id);
+    showToast("✅ Termin gespeichert!");
+  };
 
   const addMember = async () => {
     if(!newMember.name||!newMember.pin) return;
@@ -1779,7 +1834,7 @@ export default function StallApp() {
 
       <div style={{paddingBottom:16}}>
         {tab==="home"     && <HomeScreen {...commonProps} events={events} mistData={mistData} finMonths={finMonths} finAccounts={finAccounts} selDay={selDay} setSelDay={setSelDay} upcomingEvents={upcomingEvents} unpaid={unpaid} mistWarnings={mistWarnings} getVacationLabel={getVacationLabel} {...finHelpers}/>}
-        {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} updateVacation={updateVacation} deleteEvent={deleteEvent} setShowAddEvent={setShowAddEvent}/>}
+        {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} updateVacation={updateVacation} deleteEvent={deleteEvent} updateEvent={updateEvent} setShowAddEvent={setShowAddEvent}/>}
         {tab==="mist"     && <MistScreen {...commonProps} mistData={mistData} weekDates={weekDates} weekOffset={weekOffset} setWeekOffset={setWeekOffset} toggleMist={toggleMist} isMistLocked={isMistLocked} saveMemberEdit={saveMemberEdit} showToast={showToast}/>}
         {tab==="members"  && <MembersScreen {...commonProps} showAddMember={showAddMember} setShowAddMember={setShowAddMember} newMember={newMember} setNewMember={setNewMember} addMember={addMember} deleteMember={deleteMember} saveMemberEdit={saveMemberEdit} getVacationLabel={getVacationLabel} editId={editId} setEditId={setEditId} editData={editData} setEditData={setEditData} pinMode={pinMode} setPinMode={setPinMode} pins={pins} setPins={setPins} pinErr={pinErr} setPinErr={setPinErr}/>}
         {tab==="finanzen" && <FinanzenScreen {...commonProps} finMonths={finMonths} finAccounts={finAccounts} finViewMonth={finViewMonth} finViewYear={finViewYear} setFinViewMonth={setFinViewMonth} setFinViewYear={setFinViewYear} editFee={editFee} setEditFee={setEditFee} editPay={editPay} setEditPay={setEditPay} addExtra={addExtra} setAddExtra={setAddExtra} extraForm={extraForm} setExtraForm={setExtraForm} {...finHelpers}/>}
