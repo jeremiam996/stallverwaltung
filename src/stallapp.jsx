@@ -27,7 +27,7 @@ const SEED_EVENTS = [
 
 const dbToMember = r => ({ id:r.id, name:r.name, horse:r.horse||"", type:r.type, pin:r.pin, paid:r.paid, phone:r.phone||"", einstellerId:r.einsteller_id, mistShare:r.mist_share??50, mistMode:r.mist_mode||"percent" });
 const dbToEvent  = r => ({ id:r.id, type:r.type, date:r.date, time:r.time||"", note:r.note||"", color:r.color, createdBy:r.created_by||"" });
-const dbToVac    = r => ({ id:r.id, from:r.from_date, to:r.to_date, note:r.note||"" });
+const dbToVac    = r => ({ id:r.id, from:r.from_date, to:r.to_date, note:r.note||"", mustCover:r.must_cover||false });
 
 const getWeekDates = (offset=0) => {
   const now=new Date(); const day=now.getDay()||7;
@@ -131,6 +131,15 @@ const getMonthlyQuota = (member, allMembers, vacations, year, month) => {
 };
 const isOnVacationDay = (memberId, dayKey, vacations) =>
   (vacations[memberId]||[]).some(v=>v.from<=dayKey&&v.to>=dayKey);
+const getVacCoverDay = (dayKey, vacations, allMembers, excludeId) => {
+  // Returns 'must' | 'soft' | null — whether any Einsteller is on vacation on this day
+  let must = false, soft = false;
+  allMembers.filter(m=>m.type==="einsteller"&&m.id!==excludeId).forEach(m=>{
+    const vac = (vacations[m.id]||[]).find(v=>v.from<=dayKey&&v.to>=dayKey);
+    if(vac) { if(vac.mustCover) must=true; else soft=true; }
+  });
+  return must?"must":soft?"soft":null;
+};
 
 const S = {
   root:    { fontFamily:"'DM Sans',sans-serif", background:"#f5f0e8", minHeight:"100vh", color:"#2c2416", maxWidth:430, margin:"0 auto", paddingBottom:90 },
@@ -378,7 +387,18 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
   );
 }
 
-function CalendarScreen({ currentUser, isAdmin, members, events, vacations, einstellerList, showAddVacation, setShowAddVacation, newVac, setNewVac, vacTargetId, openAddVacation, addVacation, deleteVacation, deleteEvent, setShowAddEvent }) {
+function CalendarScreen({ currentUser, isAdmin, members, events, vacations, einstellerList, showAddVacation, setShowAddVacation, newVac, setNewVac, vacTargetId, openAddVacation, addVacation, deleteVacation, updateVacation, deleteEvent, setShowAddEvent }) {
+  const [editVac, setEditVac] = useState(null); // {memberId, vac}
+  const [editForm, setEditForm] = useState({from:"",to:"",note:"",mustCover:false});
+  const openEditVac = (memberId, vac) => {
+    setEditVac({memberId, vac});
+    setEditForm({from:vac.from, to:vac.to, note:vac.note, mustCover:vac.mustCover||false});
+  };
+  const saveEditVac = async () => {
+    if(!editForm.from||!editForm.to||editForm.from>editForm.to){ return; }
+    await updateVacation(editVac.memberId, editVac.vac.id, editForm);
+    setEditVac(null);
+  };
   const canAdd = isAdmin || currentUser.type==="einsteller";
   return (
     <div>
@@ -417,13 +437,19 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
           const vacs=vacations[m.id]||[]; const canEdit=isAdmin||currentUser.id===m.id;
           if(vacs.length===0) return null;
           return vacs.map(v=>(
-            <div key={v.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f5f0e8"}}>
-              <div>
-                {isAdmin&&<span style={{fontSize:12,fontWeight:600}}>{m.name.split(" ")[0]} · </span>}
-                <span style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(v.from+"T00:00:00"))} – {fmtSh(new Date(v.to+"T00:00:00"))}</span>
-                {v.note&&<span style={{fontSize:10,color:"#aaa"}}> · {v.note}</span>}
+            <div key={v.id} style={{...S.row,justifyContent:"space-between",alignItems:"flex-start",padding:"8px 0",borderBottom:"1px solid #f5f0e8"}}>
+              <div style={{flex:1,minWidth:0}}>
+                {isAdmin&&<div style={{fontSize:12,fontWeight:600,color:"#3d2b1f",marginBottom:2}}>{m.name.split(" ")[0]}</div>}
+                <div style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(v.from+"T00:00:00"))} – {fmtSh(new Date(v.to+"T00:00:00"))}</div>
+                {v.note&&<div style={{fontSize:10,color:"#aaa",marginTop:1}}>{v.note}</div>}
+                {v.mustCover&&<span style={{display:"inline-block",marginTop:3,fontSize:10,fontWeight:700,color:"#e74c3c",background:"#fdf0ee",padding:"1px 6px",borderRadius:10}}>🔴 Vertretung zwingend</span>}
               </div>
-              {canEdit&&<button onClick={()=>deleteVacation(m.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>}
+              {canEdit&&(
+                <div style={{...S.row,gap:4,flexShrink:0,marginLeft:8}}>
+                  <button onClick={()=>openEditVac(m.id,v)} style={{background:"#f0e8d8",border:"none",cursor:"pointer",color:"#8b6040",padding:"4px 8px",borderRadius:6,fontSize:11}}>✏️</button>
+                  <button onClick={()=>deleteVacation(m.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>
+                </div>
+              )}
             </div>
           ));
         })}
@@ -449,9 +475,56 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
           <input type="date" style={S.input} value={newVac.to} onChange={e=>setNewVac(p=>({...p,to:e.target.value}))}/>
           <label style={S.label}>Notiz (optional)</label>
           <input style={S.input} placeholder="z.B. Sommerurlaub" value={newVac.note} onChange={e=>setNewVac(p=>({...p,note:e.target.value}))}/>
+          {isAdmin&&(
+            <div onClick={()=>setNewVac(p=>({...p,mustCover:!p.mustCover}))}
+              style={{...S.row,alignItems:"center",gap:12,marginTop:8,marginBottom:4,padding:"12px 14px",
+                borderRadius:10,cursor:"pointer",border:`2px solid ${newVac.mustCover?"#e74c3c":"#e2d5c0"}`,
+                background:newVac.mustCover?"#fdf0ee":"#faf6f0",transition:"all .2s"}}>
+              <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${newVac.mustCover?"#e74c3c":"#ccc"}`,
+                background:newVac.mustCover?"#e74c3c":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {newVac.mustCover&&<span style={{color:"#fff",fontSize:14,fontWeight:700}}>✓</span>}
+              </div>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:newVac.mustCover?"#e74c3c":"#3d2b1f"}}>🔴 Vertretung zwingend erforderlich</div>
+                <div style={{fontSize:10,color:"#8b6040",marginTop:1}}>Einsteller werden im Mistplan stark hervorgehoben</div>
+              </div>
+            </div>
+          )}
           <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
             <button style={S.btn("light")} onClick={()=>setShowAddVacation(false)}>Abbrechen</button>
             <button style={S.btn("teal")} onClick={addVacation}>Eintragen</button>
+          </div>
+        </div></div>
+      )}
+
+      {editVac&&(
+        <div style={S.modal}><div style={S.mBox}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>✏️ Urlaub bearbeiten</div>
+          <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>für: <b>{members.find(m=>m.id===editVac.memberId)?.name}</b></div>
+          <label style={S.label}>Von</label>
+          <input type="date" style={S.input} value={editForm.from} onChange={e=>setEditForm(p=>({...p,from:e.target.value}))}/>
+          <label style={S.label}>Bis</label>
+          <input type="date" style={S.input} value={editForm.to} onChange={e=>setEditForm(p=>({...p,to:e.target.value}))}/>
+          <label style={S.label}>Notiz (optional)</label>
+          <input style={S.input} placeholder="z.B. Sommerurlaub" value={editForm.note} onChange={e=>setEditForm(p=>({...p,note:e.target.value}))}/>
+          {isAdmin&&(
+            <div onClick={()=>setEditForm(p=>({...p,mustCover:!p.mustCover}))}
+              style={{...S.row,alignItems:"center",gap:12,marginTop:8,marginBottom:4,padding:"12px 14px",
+                borderRadius:10,cursor:"pointer",border:`2px solid ${editForm.mustCover?"#e74c3c":"#e2d5c0"}`,
+                background:editForm.mustCover?"#fdf0ee":"#faf6f0",transition:"all .2s"}}>
+              <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${editForm.mustCover?"#e74c3c":"#ccc"}`,
+                background:editForm.mustCover?"#e74c3c":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {editForm.mustCover&&<span style={{color:"#fff",fontSize:14,fontWeight:700}}>✓</span>}
+              </div>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:editForm.mustCover?"#e74c3c":"#3d2b1f"}}>🔴 Vertretung zwingend erforderlich</div>
+                <div style={{fontSize:10,color:"#8b6040",marginTop:1}}>Einsteller werden im Mistplan stark hervorgehoben</div>
+              </div>
+            </div>
+          )}
+          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+            <button style={S.btn("light")} onClick={()=>setEditVac(null)}>Abbrechen</button>
+            <button style={S.btn("teal")} onClick={saveEditVac}>💾 Speichern</button>
           </div>
         </div></div>
       )}
@@ -708,20 +781,35 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               const takenByOther = (mistData[k]||[]).some(id=>id!==currentUser.id);
               const locked       = isMistLocked(k);
               const canClick     = !onVac && !takenByOther && !locked;
+              const coverNeeded  = !onVac && !checked ? getVacCoverDay(k, vacations, members, currentUser.id) : null;
+              // Styling logic
+              let bg, border, pulse=false;
+              if(onVac)            { bg="#e8f8f5"; border="2px solid #a8e6cf"; }
+              else if(checked)     { bg="#c8913a"; border="2px solid #a07030"; }
+              else if(coverNeeded==="must") { bg="#fff3f0"; border="2px solid #e74c3c"; pulse=true; }
+              else if(coverNeeded==="soft") { bg="#fffbf0"; border="1.5px dashed #f0c060"; }
+              else if(takenByOther){ bg="#fdecea"; border="2px solid #f5c0c0"; }
+              else if(locked)      { bg="#f5f0e8"; border="1px solid #e2d5c0"; }
+              else                 { bg="#fff";    border="1px solid #e2d5c0"; }
               return (
                 <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
                   style={{
                     aspectRatio:"1",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                    cursor:canClick?"pointer":"default",
-                    background:onVac?"#e8f8f5":checked?"#c8913a":takenByOther?"#fdecea":locked&&!checked?"#f5f0e8":"#fff",
-                    border:isToday?"2px solid #c8913a":checked?"2px solid #a07030":onVac?"2px solid #a8e6cf":takenByOther?"2px solid #f5c0c0":"1px solid #e2d5c0",
-                    opacity:locked&&!checked?0.6:1, transition:"all .15s"
+                    cursor:canClick?"pointer":"default", background:bg, border,
+                    opacity:locked&&!checked&&!coverNeeded?0.6:1, transition:"all .15s",
+                    boxShadow:pulse?"0 0 0 2px #e74c3c44":coverNeeded==="soft"?"0 0 0 1px #f0c06022":"none",
+                    position:"relative"
                   }}>
-                  <div style={{fontSize:11,fontWeight:isToday?700:400,color:checked?"#fff":takenByOther?"#c0392b":onVac?"#16a085":"#2c2416"}}>{d.getDate()}</div>
+                  <div style={{fontSize:11,fontWeight:isToday?700:400,
+                    color:checked?"#fff":coverNeeded==="must"?"#c0392b":takenByOther?"#c0392b":onVac?"#16a085":"#2c2416"}}>
+                    {d.getDate()}
+                  </div>
                   {onVac&&<div style={{fontSize:8}}>🌴</div>}
                   {!onVac&&checked&&<div style={{fontSize:8,color:"#fff"}}>✓</div>}
-                  {!onVac&&!checked&&takenByOther&&<div style={{fontSize:8,color:"#c0392b"}}>✗</div>}
-                  {!onVac&&!checked&&!takenByOther&&locked&&<div style={{fontSize:8,color:"#aaa"}}>🔒</div>}
+                  {!onVac&&!checked&&coverNeeded==="must"&&<div style={{fontSize:8,color:"#e74c3c",fontWeight:700}}>🔴</div>}
+                  {!onVac&&!checked&&coverNeeded==="soft"&&<div style={{fontSize:8,color:"#c8913a"}}>🌴</div>}
+                  {!onVac&&!checked&&!coverNeeded&&takenByOther&&<div style={{fontSize:8,color:"#c0392b"}}>✗</div>}
+                  {!onVac&&!checked&&!coverNeeded&&!takenByOther&&locked&&<div style={{fontSize:8,color:"#aaa"}}>🔒</div>}
                 </div>
               );
             })}
@@ -730,6 +818,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
             <span>✓ = Eingetragen</span>
             <span style={{color:"#c0392b"}}>✗ = Tag vergeben</span>
             <span>🌴 = Urlaub</span>
+            <span style={{color:"#e74c3c",fontWeight:600}}>🔴 = Vertretung nötig</span>
             <span>🔒 = Gesperrt</span>
           </div>
           {/* Aufteilung anpassen — nur wenn Reitbeteiligungen vorhanden */}
@@ -1366,7 +1455,7 @@ export default function StallApp() {
   const [vacTargetId,    setVacTargetId]    = useState(null);
   const [newEvent,       setNewEvent]       = useState({type:"Tierarzt",date:"",time:"",note:""});
   const [newMember,      setNewMember]      = useState({name:"",horse:"",type:"einsteller",pin:"",phone:"",einstellerId:""});
-  const [newVac,         setNewVac]         = useState({from:"",to:"",note:""});
+  const [newVac,         setNewVac]         = useState({from:"",to:"",note:"",mustCover:false});
   const [toast,          setToast]          = useState(null);
   const [finAccounts,    setFinAccounts]    = useState({});
   const [finMonths,      setFinMonths]      = useState({});
@@ -1482,17 +1571,23 @@ export default function StallApp() {
     else await sb.from("mist_data").insert({day_key:dayKey,member_id:memberId});
   };
 
-  const openAddVacation = (memberId) => { setVacTargetId(memberId); setNewVac({from:"",to:"",note:""}); setShowAddVacation(true); };
+  const openAddVacation = (memberId) => { setVacTargetId(memberId); setNewVac({from:"",to:"",note:"",mustCover:false}); setShowAddVacation(true); };
   const addVacation = async () => {
     if(!newVac.from||!newVac.to||newVac.from>newVac.to){ showToast("Bitte gültiges Datum wählen","#c0392b"); return; }
-    const row={id:Date.now(),member_id:vacTargetId,from_date:newVac.from,to_date:newVac.to,note:newVac.note};
+    const row={id:Date.now(),member_id:vacTargetId,from_date:newVac.from,to_date:newVac.to,note:newVac.note,must_cover:newVac.mustCover||false};
     setVacations(prev=>({...prev,[vacTargetId]:[...(prev[vacTargetId]||[]),dbToVac(row)]}));
     await sb.from("vacations").insert(row);
-    setShowAddVacation(false); showToast("🌴 Urlaub eingetragen!");
+    setShowAddVacation(false); showToast(newVac.mustCover?"🔴 Urlaub eingetragen – Vertretung zwingend!":"🌴 Urlaub eingetragen!");
   };
   const deleteVacation = async (memberId, vacId) => {
     setVacations(prev=>({...prev,[memberId]:(prev[memberId]||[]).filter(v=>v.id!==vacId)}));
     await sb.from("vacations").delete().eq("id",vacId);
+  };
+  const updateVacation = async (memberId, vacId, updates) => {
+    const row={from_date:updates.from,to_date:updates.to,note:updates.note,must_cover:updates.mustCover||false};
+    setVacations(prev=>({...prev,[memberId]:(prev[memberId]||[]).map(v=>v.id===vacId?{...v,...updates}:v)}));
+    await sb.from("vacations").update(row).eq("id",vacId);
+    showToast("✅ Urlaub aktualisiert!");
   };
 
   const EVENT_TYPES  = ["Tierarzt","Hufschmied","Impfen","Sonstiges"];
@@ -1671,7 +1766,7 @@ export default function StallApp() {
 
       <div style={{paddingBottom:16}}>
         {tab==="home"     && <HomeScreen {...commonProps} events={events} mistData={mistData} finMonths={finMonths} finAccounts={finAccounts} selDay={selDay} setSelDay={setSelDay} upcomingEvents={upcomingEvents} unpaid={unpaid} mistWarnings={mistWarnings} getVacationLabel={getVacationLabel} {...finHelpers}/>}
-        {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} deleteEvent={deleteEvent} setShowAddEvent={setShowAddEvent}/>}
+        {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} updateVacation={updateVacation} deleteEvent={deleteEvent} setShowAddEvent={setShowAddEvent}/>}
         {tab==="mist"     && <MistScreen {...commonProps} mistData={mistData} weekDates={weekDates} weekOffset={weekOffset} setWeekOffset={setWeekOffset} toggleMist={toggleMist} isMistLocked={isMistLocked} saveMemberEdit={saveMemberEdit} showToast={showToast}/>}
         {tab==="members"  && <MembersScreen {...commonProps} showAddMember={showAddMember} setShowAddMember={setShowAddMember} newMember={newMember} setNewMember={setNewMember} addMember={addMember} deleteMember={deleteMember} saveMemberEdit={saveMemberEdit} getVacationLabel={getVacationLabel} editId={editId} setEditId={setEditId} editData={editData} setEditData={setEditData} pinMode={pinMode} setPinMode={setPinMode} pins={pins} setPins={setPins} pinErr={pinErr} setPinErr={setPinErr}/>}
         {tab==="finanzen" && <FinanzenScreen {...commonProps} finMonths={finMonths} finAccounts={finAccounts} finViewMonth={finViewMonth} finViewYear={finViewYear} setFinViewMonth={setFinViewMonth} setFinViewYear={setFinViewYear} editFee={editFee} setEditFee={setEditFee} editPay={editPay} setEditPay={setEditPay} addExtra={addExtra} setAddExtra={setAddExtra} extraForm={extraForm} setExtraForm={setExtraForm} {...finHelpers}/>}
