@@ -425,39 +425,72 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
 function MistSplitWidget({ currentUser, rbs, members, vacations, viewYear, viewMonth, saveMemberEdit, showToast }) {
   const [open, setOpen] = useState(false);
 
-  // Calculate total monthly duties for the whole group (Einsteller + all RBs combined = sum of weeks × 2)
-  const weeks = getWeeksInMonth(viewYear, viewMonth);
-  const totalMonthly = weeks.length * 2; // e.g. 4 weeks × 2 = 8 Dienste/Monat
+  // Work in "per week" units: total = 2 per week, Einsteller gets mistShare% of that
+  // mistShare 0%=0/Woche, 50%=1/Woche, 100%=2/Woche
+  const shareToWeekly = (share) => Math.round(2 * ((share??50)/100)); // 0,1,2
+  const weeklyToShare = (w) => Math.round(w / 2 * 100);               // 0,50,100
 
-  // Current share
-  const currentMyCount = Math.max(0, Math.min(totalMonthly, Math.round(totalMonthly * ((currentUser.mistShare??50)/100))));
-  const currentRbTotal = totalMonthly - currentMyCount;
+  const currentWeekly = shareToWeekly(currentUser.mistShare);
+  const [myWeekly, setMyWeekly] = useState(currentWeekly);
 
-  // Local edit state (in absolute Dienste)
-  const [myCount, setMyCount] = useState(currentMyCount);
-  const rbTotal = totalMonthly - myCount;
-  const myPct   = totalMonthly > 0 ? Math.round(myCount / totalMonthly * 100) : 50;
+  // Sync if currentUser.mistShare changes after save
+  useEffect(() => { setMyWeekly(shareToWeekly(currentUser.mistShare)); }, [currentUser.mistShare]);
 
-  const handleOpen = () => { setMyCount(currentMyCount); setOpen(true); };
+  const rbWeekly = 2 - myWeekly;
+  const rbEach   = rbs.length > 0 ? (rbWeekly / rbs.length).toFixed(1) : 0;
+
+  // For current month display
+  const weeks        = getWeeksInMonth(viewYear, viewMonth);
+  const totalMonthly = weeks.length * 2;
+  const myMonthly    = weeks.length * currentWeekly;
+  const rbMonthly    = totalMonthly - myMonthly;
+  const monthLabel   = new Date(viewYear, viewMonth, 1).toLocaleDateString("de-DE",{month:"long"});
+
   const handleSave = async () => {
-    await saveMemberEdit(currentUser.id, {...currentUser, mistShare: myPct, einstellerId: currentUser.einstellerId||""});
+    const pct = weeklyToShare(myWeekly);
+    await saveMemberEdit(currentUser.id, {...currentUser, mistShare: pct, einstellerId: currentUser.einstellerId||""});
     showToast("✅ Aufteilung gespeichert!");
     setOpen(false);
   };
 
-  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString("de-DE",{month:"long"});
-
   return (
     <>
+      {/* Summary for current month */}
       <div style={{marginTop:14,borderTop:"1px solid #f0e8d8",paddingTop:12}}>
         <div style={{...S.row,justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f"}}>⚖️ Aufteilung {monthLabel}</div>
             <div style={{fontSize:11,color:"#8b6040",marginTop:2}}>
-              Du: <b>{currentMyCount}×</b> · Reitbet.: <b>{currentRbTotal}×</b> (von {totalMonthly} gesamt)
+              Du: <b>{myMonthly}×</b> · Reitbet.: <b>{rbMonthly}×</b> (von {totalMonthly} gesamt)
             </div>
           </div>
-          <button onClick={handleOpen} style={{...S.btn("light"),padding:"6px 12px",fontSize:12}}>✏️ Anpassen</button>
+        </div>
+      </div>
+
+      {/* Permanent weekly setting */}
+      <div style={{marginTop:10,background:"#faf6f0",borderRadius:10,padding:"12px 14px",border:"1px solid #e2d5c0"}}>
+        <div style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f"}}>📅 Dauereinstellung (pro Woche)</div>
+            <div style={{fontSize:11,color:"#8b6040",marginTop:2}}>Gilt für alle Monate</div>
+          </div>
+          <button onClick={()=>{ setMyWeekly(currentWeekly); setOpen(true); }}
+            style={{...S.btn("light"),padding:"6px 12px",fontSize:12}}>✏️ Anpassen</button>
+        </div>
+        <div style={{...S.row,gap:6}}>
+          <div style={{flex:1,textAlign:"center",padding:"8px 4px",background:"#fff",borderRadius:8,border:"1px solid #e2d5c0"}}>
+            <div style={{fontSize:10,color:"#8b6040"}}>Du</div>
+            <div style={{fontSize:18,fontWeight:700,color:"#c8913a"}}>{currentWeekly}×</div>
+            <div style={{fontSize:9,color:"#aaa"}}>/ Woche</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",fontSize:16,color:"#aaa"}}>⟷</div>
+          {rbs.map(rb=>(
+            <div key={rb.id} style={{flex:1,textAlign:"center",padding:"8px 4px",background:"#fff",borderRadius:8,border:"1px solid #a8d8c8"}}>
+              <div style={{fontSize:10,color:"#16a085"}}>{rb.name.split(" ")[0]}</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#16a085"}}>{rbEach}×</div>
+              <div style={{fontSize:9,color:"#aaa"}}>/ Woche</div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -465,49 +498,48 @@ function MistSplitWidget({ currentUser, rbs, members, vacations, viewYear, viewM
         <div style={S.modal}><div style={{...S.mBox,maxWidth:340}}>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>Aufteilung anpassen</div>
           <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>
-            {totalMonthly} Dienste im {monthLabel} auf {1+rbs.length} Personen verteilen
+            2 Dienste/Woche auf {1+rbs.length} Personen verteilen · gilt dauerhaft für alle Monate
           </div>
 
           {/* Visual split bar */}
           <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",marginBottom:20,background:"#f0e8d8"}}>
-            <div style={{flex:myCount,background:"#c8913a",transition:"flex .25s",minWidth:myCount>0?4:0,borderRadius:"10px 0 0 10px"}}/>
-            <div style={{flex:rbTotal||0.001,background:"#a8d8c8",transition:"flex .25s",minWidth:rbTotal>0?4:0,borderRadius:"0 10px 10px 0"}}/>
+            <div style={{flex:myWeekly,background:"#c8913a",transition:"flex .25s",minWidth:myWeekly>0?8:0,borderRadius:"10px 0 0 10px"}}/>
+            <div style={{flex:(2-myWeekly)||0.001,background:"#a8d8c8",transition:"flex .25s",minWidth:(2-myWeekly)>0?8:0,borderRadius:myWeekly===0?"10px":"0 10px 10px 0"}}/>
           </div>
 
           {/* Einsteller row — editable */}
           <div style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:12,padding:"12px 14px",background:"#faf6f0",borderRadius:10,border:"1.5px solid #c8913a"}}>
             <div>
               <div style={{fontSize:13,fontWeight:700}}>{currentUser.name.split(" ")[0]} <span style={{fontSize:10,color:"#aaa"}}>(Du)</span></div>
-              <div style={{fontSize:11,color:"#8b6040"}}>{myCount} Dienste im {monthLabel}</div>
+              <div style={{fontSize:11,color:"#8b6040"}}>{myWeekly}× pro Woche · ca. {weeks.length * myWeekly}× im {monthLabel}</div>
             </div>
             <div style={{...S.row,gap:10,alignItems:"center"}}>
-              <button onClick={()=>setMyCount(m=>Math.max(0,m-1))} disabled={myCount<=0}
-                style={{width:34,height:34,borderRadius:17,border:"none",background:myCount>0?"#e2d5c0":"#f5f0e8",
-                  cursor:myCount>0?"pointer":"default",fontSize:20,lineHeight:"1",color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-              <div style={{width:30,textAlign:"center",fontWeight:700,fontSize:20,color:"#c8913a"}}>{myCount}</div>
-              <button onClick={()=>setMyCount(m=>Math.min(totalMonthly,m+1))} disabled={myCount>=totalMonthly}
-                style={{width:34,height:34,borderRadius:17,border:"none",background:myCount<totalMonthly?"#e2d5c0":"#f5f0e8",
-                  cursor:myCount<totalMonthly?"pointer":"default",fontSize:20,lineHeight:"1",color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+              <button onClick={()=>setMyWeekly(w=>Math.max(0,w-1))} disabled={myWeekly<=0}
+                style={{width:34,height:34,borderRadius:17,border:"none",background:myWeekly>0?"#e2d5c0":"#f5f0e8",
+                  cursor:myWeekly>0?"pointer":"default",fontSize:20,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+              <div style={{width:30,textAlign:"center",fontWeight:700,fontSize:22,color:"#c8913a"}}>{myWeekly}</div>
+              <button onClick={()=>setMyWeekly(w=>Math.min(2,w+1))} disabled={myWeekly>=2}
+                style={{width:34,height:34,borderRadius:17,border:"none",background:myWeekly<2?"#e2d5c0":"#f5f0e8",
+                  cursor:myWeekly<2?"pointer":"default",fontSize:20,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
             </div>
           </div>
 
-          {/* Reitbeteiligung rows — read-only, auto-calculated */}
+          {/* Reitbeteiligung rows */}
           {rbs.map(rb=>{
-            const rbEach = rbs.length > 0 ? rbTotal / rbs.length : 0;
-            const rbRounded = Math.round(rbEach * 10) / 10;
+            const rbW = (2-myWeekly)/rbs.length;
             return (
               <div key={rb.id} style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:8,padding:"10px 14px",background:"#f0faf6",borderRadius:10,border:"1px solid #a8d8c8"}}>
                 <div>
                   <div style={{fontSize:12,fontWeight:600}}>{rb.name.split(" ")[0]}</div>
-                  <div style={{fontSize:11,color:"#16a085"}}>{rbRounded} Dienste im {monthLabel}</div>
+                  <div style={{fontSize:11,color:"#16a085"}}>{rbW.toFixed(1)}× pro Woche · ca. {(weeks.length * rbW).toFixed(1)}× im {monthLabel}</div>
                 </div>
-                <div style={{fontWeight:700,fontSize:20,color:"#16a085"}}>{rbRounded}</div>
+                <div style={{fontWeight:700,fontSize:20,color:"#16a085"}}>{rbW.toFixed(1)}</div>
               </div>
             );
           })}
 
           <div style={{fontSize:10,color:"#aaa",textAlign:"center",margin:"10px 0 14px"}}>
-            {myCount} + {rbTotal} = {totalMonthly} Dienste gesamt
+            {myWeekly} + {2-myWeekly} = 2× / Woche gesamt
           </div>
           <div style={{...S.row,justifyContent:"flex-end",gap:8}}>
             <button style={S.btn("light")} onClick={()=>setOpen(false)}>Abbrechen</button>
