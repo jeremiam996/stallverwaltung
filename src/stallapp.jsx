@@ -934,7 +934,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
             {getExtraConfig(extraForm.type).hasQty&&(<>
               <label style={S.label}>Anzahl ({getExtraConfig(extraForm.type).unit})</label>
               <div style={{...S.row,gap:6,marginBottom:8}}>
-                <button onClick={()=>setExtraForm(p=>({...p,qty:String(Math.max(1,(parseInt(p.qty)||1)-1))})} style={{...S.btn("light"),padding:"6px 14px",fontSize:16}}>−</button>
+                <button onClick={()=>setExtraForm(p=>({...p,qty:String(Math.max(1,(parseInt(p.qty)||1)-1))}))} style={{...S.btn("light"),padding:"6px 14px",fontSize:16}}>−</button>
                 <input style={{...S.input,marginBottom:0,textAlign:"center",fontWeight:700,fontSize:16}} type="number" min="1" value={extraForm.qty} onChange={e=>setExtraForm(p=>({...p,qty:e.target.value}))}/>
                 <button onClick={()=>setExtraForm(p=>({...p,qty:String((parseInt(p.qty)||1)+1)}))} style={{...S.btn("light"),padding:"6px 14px",fontSize:16}}>+</button>
               </div>
