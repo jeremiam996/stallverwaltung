@@ -25,7 +25,7 @@ const SEED_EVENTS = [
   { id:3, type:"Impfen",     date:new Date(today.getFullYear(),today.getMonth(),today.getDate()+14).toISOString().slice(0,10), time:"14:00", note:"Influenza + Herpes",             color:"#27ae60" },
 ];
 
-const dbToMember = r => ({ id:r.id, name:r.name, horse:r.horse||"", type:r.type, pin:r.pin, paid:r.paid, phone:r.phone||"", einstellerId:r.einsteller_id });
+const dbToMember = r => ({ id:r.id, name:r.name, horse:r.horse||"", type:r.type, pin:r.pin, paid:r.paid, phone:r.phone||"", einstellerId:r.einsteller_id, mistShare:r.mist_share??50 });
 const dbToEvent  = r => ({ id:r.id, type:r.type, date:r.date, time:r.time||"", note:r.note||"", color:r.color, createdBy:r.created_by||"" });
 const dbToVac    = r => ({ id:r.id, from:r.from_date, to:r.to_date, note:r.note||"" });
 
@@ -55,17 +55,26 @@ const getWeeksInMonth = (year, month) => {
 };
 
 const getBaseGroupQuota = (einsteller, allMembers) => {
+  // mistShare = Einsteller's share in %, default 50. Reitbeteiligungen split the rest equally.
   const beteiligungen = allMembers.filter(m=>m.einstellerId===einsteller.id);
-  return Math.max(1, Math.round(2 / (1 + beteiligungen.length)));
+  if(beteiligungen.length===0) return 2; // solo: 2 per week
+  const share = (einsteller.mistShare??50) / 100;
+  return Math.max(1, Math.round(2 * share));
 };
 const getMemberWeekQuota = (member, weekMon, allMembers, vacations) => {
   const weekEnd = new Date(weekMon); weekEnd.setDate(new Date(weekMon).getDate() + 6);
   const weekEndKey = dk(weekEnd);
   const isOnVacation = (vacations[member.id]||[]).some(v=>v.from<=weekEndKey && v.to>=weekMon);
   if(isOnVacation) return 0;
-  const root = member.type==="reitbeteiligung" ? allMembers.find(m=>m.id===member.einstellerId) : member;
-  if(!root) return getBaseGroupQuota(member, allMembers);
-  return getBaseGroupQuota(root, allMembers);
+  if(member.type==="reitbeteiligung") {
+    const root = allMembers.find(m=>m.id===member.einstellerId);
+    if(!root) return 1;
+    const beteiligungen = allMembers.filter(m=>m.einstellerId===root.id);
+    const rootShare = (root.mistShare??50) / 100;
+    const rbShare = (1 - rootShare) / beteiligungen.length;
+    return Math.max(1, Math.round(2 * rbShare));
+  }
+  return getBaseGroupQuota(member, allMembers);
 };
 const countMistMonth = (mistData, memberId, year, month) => {
   let count = 0;
@@ -672,6 +681,22 @@ function MRow({ m, isChild, isAdmin, einstellerList, editId, editData, setEditDa
               <option value="">— bitte wählen —</option>
               {einstellerList.filter(x=>x.id!==m.id).map(x=><option key={x.id} value={x.id}>{x.name} ({x.horse})</option>)}
             </select></>}
+          {(editData.type==="einsteller"||m.type==="einsteller")&&einstellerList.find(x=>x.id===m.id)&&members.filter(rb=>rb.einstellerId===m.id).length>0&&(<>
+            <label style={lS}>Mistdienst-Anteil Einsteller: <b>{editData.mistShare??50}%</b></label>
+            <div style={{...S.row,gap:8,marginBottom:6}}>
+              {[25,50,75,100].map(v=>(
+                <button key={v} onClick={()=>setEditData(p=>({...p,mistShare:v}))}
+                  style={{flex:1,padding:"5px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,
+                    background:(editData.mistShare??50)===v?"#c8913a":"#f0e6d3",
+                    color:(editData.mistShare??50)===v?"#fff":"#3d2b1f"}}>
+                  {v}%
+                </button>
+              ))}
+            </div>
+            <div style={{fontSize:10,color:"#aaa",marginBottom:6}}>
+              Rest ({100-(editData.mistShare??50)}%) wird gleichmäßig auf {members.filter(rb=>rb.einstellerId===m.id).length} Reitbet. verteilt
+            </div>
+          </>)}
           <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
             <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={cancelEdit}>Abbrechen</button>
             <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={()=>saveEdit(m.id)}>💾 Speichern</button>
@@ -683,7 +708,7 @@ function MRow({ m, isChild, isAdmin, einstellerList, editId, editData, setEditDa
 }
 
 function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacations, showAddMember, setShowAddMember, newMember, setNewMember, addMember, deleteMember, saveMemberEdit, getVacationLabel, editId, setEditId, editData, setEditData, pinMode, setPinMode, pins, setPins, pinErr, setPinErr, showToast }) {
-  const startEdit  = m => { setEditId(m.id); setEditData({name:m.name,horse:m.horse,phone:m.phone||"",pin:m.pin,type:m.type,einstellerId:m.einstellerId||""}); };
+  const startEdit  = m => { setEditId(m.id); setEditData({name:m.name,horse:m.horse,phone:m.phone||"",pin:m.pin,type:m.type,einstellerId:m.einstellerId||"",mistShare:m.mistShare??50}); };
   const cancelEdit = () => setEditId(null);
   const saveEdit   = async id => { if(!editData.name||!editData.pin) return; await saveMemberEdit(id, editData); setEditId(null); };
   const rowProps   = { isAdmin, einstellerList, editId, editData, setEditData, deleteMember, getVacationLabel, startEdit, cancelEdit, saveEdit };
@@ -774,6 +799,25 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
   const viewYear   = finViewYear;
   const monthLabel = new Date(viewYear,viewMonth,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"});
 
+  // Extra types: fixed price per unit, qty-based
+  const EXTRA_TYPES = [
+    { label:"Decken waschen",   unitPrice:5,  unit:"Decke",    hasQty:true  },
+    { label:"Regendecke",       unitPrice:10, unit:"Decke",    hasQty:true  },
+    { label:"Vollpension",      unitPrice:65, unit:"Monat",    hasQty:false },
+    { label:"Sonstiges",        unitPrice:0,  unit:"",         hasQty:false },
+  ];
+  const getExtraConfig = (type) => EXTRA_TYPES.find(t=>t.label===type)||EXTRA_TYPES[0];
+  const calcExtraAmount = (form) => {
+    const cfg = getExtraConfig(form.type);
+    if(cfg.hasQty) return cfg.unitPrice * (parseInt(form.qty)||1);
+    return parseFloat(form.amount)||0;
+  };
+  const resetExtraForm = () => setExtraForm({type:"Decken waschen",qty:"1",amount:"5",desc:""});
+  const onExtraTypeChange = (type) => {
+    const cfg = getExtraConfig(type);
+    setExtraForm(p=>({...p, type, qty:"1", amount:String(cfg.unitPrice||p.amount)}));
+  };
+
   const goMonth = (dir) => {
     let m=viewMonth+dir, y=viewYear;
     if(m>11){m=0;y++;} if(m<0){m=11;y--;}
@@ -804,13 +848,15 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
   };
 
   const handleAddExtra = async (memberId) => {
-    const amount = parseFloat(extraForm.amount);
+    const amount = calcExtraAmount(extraForm);
     if(isNaN(amount)||amount<=0) return;
+    const cfg = getExtraConfig(extraForm.type);
+    const qty = cfg.hasQty ? (parseInt(extraForm.qty)||1) : null;
+    const desc = cfg.hasQty ? `${qty}× ${cfg.unit}` : extraForm.desc;
     const fm = getFinMonth(memberId, viewYear, viewMonth);
-    const newExtra = {id:Date.now(), type:extraForm.type, amount, desc:extraForm.desc};
+    const newExtra = {id:Date.now(), type:extraForm.type, amount, qty, desc};
     await saveFinMonth(memberId, viewYear, viewMonth, {extras:[...(fm.extras||[]),newExtra]});
-    setAddExtra(null);
-    setExtraForm({type:"Decken waschen",amount:"5",desc:""});
+    setAddExtra(null); resetExtraForm();
     showToast("✅ Zusatzdienst gebucht!");
   };
 
@@ -852,7 +898,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
         <div style={S.card}>
           <div style={{...S.row,justifyContent:"space-between",marginBottom:10}}>
             <div style={S.cTitle}>Zusatzdienste</div>
-            <button style={{...S.btn("primary"),padding:"7px 12px",fontSize:12}} onClick={()=>{setAddExtra(m.id);setExtraForm({type:"Decken waschen",amount:"5",desc:""});}}>+ Hinzufügen</button>
+            <button style={{...S.btn("primary"),padding:"7px 12px",fontSize:12}} onClick={()=>{setAddExtra(m.id);resetExtraForm();}}>+ Hinzufügen</button>
           </div>
           {extras.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Keine Zusätze diesen Monat</div>}
           {extras.map(e=>(
@@ -882,13 +928,27 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
           <div style={S.modal}><div style={S.mBox}>
             <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>Zusatzdienst buchen</div>
             <label style={S.label}>Typ</label>
-            <select style={S.input} value={extraForm.type} onChange={e=>setExtraForm(p=>({...p,type:e.target.value,amount:e.target.value==="Decken waschen"?"5":p.amount}))}>
-              <option>Decken waschen</option><option>Sonstiges</option>
+            <select style={S.input} value={extraForm.type} onChange={e=>onExtraTypeChange(e.target.value)}>
+              {EXTRA_TYPES.map(t=><option key={t.label}>{t.label}</option>)}
             </select>
-            <label style={S.label}>Betrag (€)</label>
-            <input style={S.input} type="number" step="0.50" min="0" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
-            <label style={S.label}>Beschreibung (optional)</label>
-            <input style={S.input} placeholder="z.B. 2× Decken" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
+            {getExtraConfig(extraForm.type).hasQty&&(<>
+              <label style={S.label}>Anzahl ({getExtraConfig(extraForm.type).unit})</label>
+              <div style={{...S.row,gap:6,marginBottom:8}}>
+                <button onClick={()=>setExtraForm(p=>({...p,qty:String(Math.max(1,(parseInt(p.qty)||1)-1))})} style={{...S.btn("light"),padding:"6px 14px",fontSize:16}}>−</button>
+                <input style={{...S.input,marginBottom:0,textAlign:"center",fontWeight:700,fontSize:16}} type="number" min="1" value={extraForm.qty} onChange={e=>setExtraForm(p=>({...p,qty:e.target.value}))}/>
+                <button onClick={()=>setExtraForm(p=>({...p,qty:String((parseInt(p.qty)||1)+1)}))} style={{...S.btn("light"),padding:"6px 14px",fontSize:16}}>+</button>
+              </div>
+              <div style={{textAlign:"center",fontSize:13,color:"#c8913a",fontWeight:700,marginBottom:12}}>
+                {parseInt(extraForm.qty)||1} × {getExtraConfig(extraForm.type).unitPrice}€ = <b>{calcExtraAmount(extraForm).toFixed(2)}€</b>
+              </div>
+            </>)}
+            {!getExtraConfig(extraForm.type).hasQty&&extraForm.type!=="Vollpension"&&(<>
+              <label style={S.label}>Betrag (€)</label>
+              <input style={S.input} type="number" step="0.50" min="0" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
+              <label style={S.label}>Beschreibung (optional)</label>
+              <input style={S.input} placeholder="z.B. Sonderreinigung" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
+            </>)}
+            {extraForm.type==="Vollpension"&&<div style={{textAlign:"center",fontSize:13,color:"#c8913a",fontWeight:700,marginBottom:12}}>65.00€ / Monat</div>}
             <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
               <button style={S.btn("light")} onClick={()=>setAddExtra(null)}>Abbrechen</button>
               <button style={S.btn("primary")} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
@@ -958,7 +1018,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
             </div>
             <div style={{...S.row,justifyContent:"space-between",padding:"4px 0 4px",borderBottom:"1px solid #f5f0e8"}}>
               <div style={{fontSize:11,color:"#8b6040",fontWeight:600}}>Zusätze</div>
-              <button style={{...S.btn("primary"),padding:"3px 10px",fontSize:11}} onClick={()=>{setAddExtra(m.id);setExtraForm({type:"Decken waschen",amount:"5",desc:""});}}>+ Hinzufügen</button>
+              <button style={{...S.btn("primary"),padding:"3px 10px",fontSize:11}} onClick={()=>{setAddExtra(m.id);resetExtraForm();}}>+ Hinzufügen</button>
             </div>
             {extras.map(e=>(
               <div key={e.id} style={{...S.row,justifyContent:"space-between",padding:"5px 0 5px 10px",borderBottom:"1px solid #f5f0e8"}}>
@@ -972,11 +1032,22 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
             {addExtra===m.id&&(
               <div style={{background:"#faf6f0",borderRadius:8,padding:10,border:"1px solid #c8913a",margin:"6px 0"}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#c8913a",marginBottom:8}}>Zusatzdienst hinzufügen</div>
-                <select style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} value={extraForm.type} onChange={e=>setExtraForm(p=>({...p,type:e.target.value,amount:e.target.value==="Decken waschen"?"5":p.amount}))}>
-                  <option>Decken waschen</option><option>Sonstiges</option>
+                <select style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} value={extraForm.type} onChange={e=>onExtraTypeChange(e.target.value)}>
+                  {EXTRA_TYPES.map(t=><option key={t.label}>{t.label}</option>)}
                 </select>
-                <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} type="number" step="0.50" min="0" placeholder="Betrag (€)" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
-                <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} placeholder="Beschreibung (optional)" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
+                {getExtraConfig(extraForm.type).hasQty&&(
+                  <div style={{...S.row,gap:6,marginBottom:6}}>
+                    <button onClick={()=>setExtraForm(p=>({...p,qty:String(Math.max(1,(parseInt(p.qty)||1)-1))}))} style={{...S.btn("light"),padding:"4px 12px",fontSize:14}}>−</button>
+                    <input style={{...S.input,marginBottom:0,textAlign:"center",fontWeight:700}} type="number" min="1" value={extraForm.qty} onChange={e=>setExtraForm(p=>({...p,qty:e.target.value}))}/>
+                    <button onClick={()=>setExtraForm(p=>({...p,qty:String((parseInt(p.qty)||1)+1)}))} style={{...S.btn("light"),padding:"4px 12px",fontSize:14}}>+</button>
+                  </div>
+                )}
+                {getExtraConfig(extraForm.type).hasQty&&<div style={{fontSize:12,color:"#c8913a",fontWeight:700,marginBottom:6,textAlign:"center"}}>{calcExtraAmount(extraForm).toFixed(2)}€</div>}
+                {!getExtraConfig(extraForm.type).hasQty&&extraForm.type!=="Vollpension"&&<>
+                  <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} type="number" step="0.50" min="0" placeholder="Betrag (€)" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
+                  <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} placeholder="Beschreibung (optional)" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
+                </>}
+                {extraForm.type==="Vollpension"&&<div style={{fontSize:12,color:"#c8913a",fontWeight:700,marginBottom:6}}>65.00€ / Monat</div>}
                 <div style={{...S.row,justifyContent:"flex-end",gap:6}}>
                   <button style={{...S.btn("light"),padding:"5px 10px",fontSize:11}} onClick={()=>setAddExtra(null)}>Abbrechen</button>
                   <button style={{...S.btn("primary"),padding:"5px 10px",fontSize:11}} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
@@ -1070,7 +1141,7 @@ export default function StallApp() {
   const [editFee,        setEditFee]        = useState({});
   const [editPay,        setEditPay]        = useState({});
   const [addExtra,       setAddExtra]       = useState(null);
-  const [extraForm,      setExtraForm]      = useState({type:"Decken waschen",amount:"5",desc:""});
+  const [extraForm,      setExtraForm]      = useState({type:"Decken waschen",qty:"1",amount:"5",desc:""});
   const [selDay,         setSelDay]         = useState(null);
 
   const weekDates = getWeekDates(weekOffset);
@@ -1205,8 +1276,8 @@ export default function StallApp() {
   };
   const deleteMember = async id => { setMembers(p=>p.filter(m=>m.id!==id)); await sb.from("members").delete().eq("id",id); };
   const saveMemberEdit = async (id, editData) => {
-    const updates={name:editData.name,horse:editData.horse,phone:editData.phone,pin:editData.pin,type:editData.type,paid:editData.type==="reitbeteiligung"?null:(members.find(m=>m.id===id)?.paid??false),einsteller_id:editData.einstellerId?parseInt(editData.einstellerId):null};
-    setMembers(p=>p.map(m=>m.id===id?{...m,...dbToMember({id,...updates,einsteller_id:updates.einsteller_id})}:m));
+    const updates={name:editData.name,horse:editData.horse,phone:editData.phone,pin:editData.pin,type:editData.type,paid:editData.type==="reitbeteiligung"?null:(members.find(m=>m.id===id)?.paid??false),einsteller_id:editData.einstellerId?parseInt(editData.einstellerId):null,mist_share:editData.mistShare??50};
+    setMembers(p=>p.map(m=>m.id===id?{...m,...dbToMember({id,...updates,einsteller_id:updates.einsteller_id,mist_share:updates.mist_share})}:m));
     await sb.from("members").update(updates).eq("id",id);
     showToast("✅ Daten gespeichert!");
   };
