@@ -464,7 +464,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
             ))}
             {Array.from({length:(new Date(viewYear,viewMonth,1).getDay()||7)-1}).map((_,i)=><div key={"e"+i}/>)}
             {daysInMonth().map(d=>{
-              const k            = dk(d);
+              const k            = dkl(d);
               const checked      = (mistData[k]||[]).includes(currentUser.id);
               const isToday      = k===dk(today);
               const onVac        = isOnVacationDay(currentUser.id,k,vacations);
@@ -540,7 +540,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                         :<div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{monthC}/{monthQ}Mo</div>}
                     </div>
                     {weekDates.map(d=>{
-                      const k=dk(d); const checked=(mistData[k]||[]).includes(m.id);
+                      const k=dkl(d); const checked=(mistData[k]||[]).includes(m.id);
                       const isPast=d<new Date(dk(today)); const onVac=isOnVacationDay(m.id,k,vacations);
                       const takenByOther=(mistData[k]||[]).some(id=>id!==m.id);
                       return (
@@ -581,17 +581,21 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               ))}
               {Array.from({length:(new Date(viewYear,viewMonth,1).getDay()||7)-1}).map((_,i)=><div key={"e"+i}/>)}
               {daysInMonth().map(d=>{
-                const k=dk(d); const bookedIds=mistData[k]||[]; const isToday=k===dk(today);
+                const k=dkl(d); const bookedIds=mistData[k]||[]; const isToday=k===dkl(today);
                 const isPast=d<new Date(dk(today)); const hasEntry=bookedIds.length>0;
+                const myEntry=bookedIds.includes(currentUser.id);
                 const bookedMember=hasEntry?members.find(m=>m.id===bookedIds[0]):null;
                 const someoneOnVac=[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].some(m=>isOnVacationDay(m.id,k,vacations));
+                const canClick=!hasEntry||myEntry; // admin can click free days or own entry
                 return (
-                  <div key={k} style={{aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                    background:hasEntry?"#c8913a":isPast?"#f5f0e8":"#fff",
-                    border:isToday?"2px solid #c8913a":hasEntry?"2px solid #a07030":"1px solid #e2d5c0",
-                    cursor:"default",transition:"all .15s"}}>
-                    <div style={{fontSize:10,fontWeight:isToday?700:400,color:hasEntry?"#fff":"#2c2416"}}>{d.getDate()}</div>
-                    {hasEntry&&<div style={{fontSize:7,color:"#fff5e0",fontWeight:600,lineHeight:1,textAlign:"center",overflow:"hidden",maxWidth:"90%",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bookedMember?.name.split(" ")[0]}</div>}
+                  <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
+                    style={{aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                    background:myEntry?"#3d2b1f":hasEntry?"#c8913a":isPast?"#f5f0e8":"#fff",
+                    border:isToday?"2px solid #c8913a":myEntry?"2px solid #3d2b1f":hasEntry?"2px solid #a07030":"1px solid #e2d5c0",
+                    cursor:canClick?"pointer":"default",transition:"all .15s"}}>
+                    <div style={{fontSize:10,fontWeight:isToday?700:400,color:(hasEntry||myEntry)?"#fff":"#2c2416"}}>{d.getDate()}</div>
+                    {myEntry&&<div style={{fontSize:7,color:"#f5c842",fontWeight:700}}>✓ Ich</div>}
+                    {!myEntry&&hasEntry&&<div style={{fontSize:7,color:"#fff5e0",fontWeight:600,lineHeight:1,textAlign:"center",overflow:"hidden",maxWidth:"90%",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bookedMember?.name.split(" ")[0]}</div>}
                     {!hasEntry&&someoneOnVac&&<div style={{fontSize:8}}>🌴</div>}
                   </div>
                 );
@@ -728,6 +732,13 @@ function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacation
         <div key={e.id} style={S.card}>
           <MRow m={e} isChild={false} {...rowProps}/>
           {members.filter(m=>m.einstellerId===e.id).map(rb=><MRow key={rb.id} m={rb} isChild={true} {...rowProps}/>)}
+        </div>
+      ))}
+      {/* Verwaiste Reitbeteiligungen (einstellerId zeigt auf nicht-existierenden Einsteller) */}
+      {members.filter(m=>m.type==="reitbeteiligung"&&m.einstellerId&&!members.find(e=>e.id===m.einstellerId)).map(m=>(
+        <div key={m.id} style={{...S.card,border:"1.5px solid #f5c0c0"}}>
+          <div style={{fontSize:11,color:"#c0392b",marginBottom:8}}>⚠️ Einsteller nicht gefunden – bitte zuordnen</div>
+          <MRow m={m} isChild={false} {...rowProps}/>
         </div>
       ))}
       {isAdmin&&<div style={{margin:"14px 16px 0"}}><button style={{...S.btn("primary"),width:"100%",padding:14}} onClick={()=>setShowAddMember(true)}>+ Mitglied hinzufügen</button></div>}
