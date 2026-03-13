@@ -134,7 +134,7 @@ const Ic = ({ n, s=20 }) => {
 function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations, finMonths, finAccounts, selDay, setSelDay, upcomingEvents, unpaid, mistWarnings, getVacationLabel, calcTotal, getFinMonth }) {
   const curYear  = today.getFullYear();
   const curMonth = today.getMonth();
-  const isE = currentUser.type==="einsteller"||(currentUser.type==="admin"&&currentUser.horse);
+  const isE = currentUser.type==="einsteller";
   const mQ  = isE ? getMonthlyQuota(currentUser,members,vacations,curYear,curMonth) : 0;
   const mC  = isE ? countMistMonth(mistData,currentUser.id,curYear,curMonth) : 0;
   const myVacLabel = getVacationLabel(currentUser.id);
@@ -777,8 +777,8 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
     showToast("💾 Grundgebühr gespeichert!");
   };
 
-  const handleSavePayment = async (memberId) => {
-    const pay = parseFloat(editPay[memberId]);
+  const handleSavePayment = async (memberId, directAmount) => {
+    const pay = directAmount !== undefined ? directAmount : parseFloat(editPay[memberId]);
     if(isNaN(pay)) return;
     const total = calcTotal(memberId, viewYear, viewMonth);
     let diff = pay - total;
@@ -788,7 +788,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
     if(nm>11){nm=0;ny++;}
     const nextFm = getFinMonth(memberId,ny,nm);
     await saveFinMonth(memberId, ny, nm, {carryover: Number((nextFm.carryover||0) + diff)});
-    setEditPay(p=>({...p,[memberId]:undefined}));
+    if(directAmount===undefined) setEditPay(p=>({...p,[memberId]:undefined}));
     showToast(diff!==0?`💾 Zahlung gespeichert · Übertrag: ${diff>0?"+":""}${diff.toFixed(2)}€`:"💾 Zahlung gespeichert!");
   };
 
@@ -982,24 +982,33 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
               <div style={{fontWeight:700,fontSize:13}}>Gesamt fällig</div>
               <div style={{fontWeight:700,fontSize:15}}>{total.toFixed(2)}€</div>
             </div>
-            <div style={{...S.row,justifyContent:"space-between",padding:"8px 0 0"}}>
-              <div style={{fontSize:12,color:"#8b6040"}}>Zahlung eingetragen</div>
+            {/* Zahlung abhaken */}
+            <div style={{padding:"10px 0 0"}}>
+              <div style={{...S.row,justifyContent:"space-between",marginBottom:6}}>
+                <div style={{fontSize:12,color:"#8b6040",fontWeight:600}}>Zahlung</div>
+                <label style={{...S.row,gap:8,cursor:"pointer"}}>
+                  <span style={{fontSize:12,color:paid?"#27ae60":"#c0392b",fontWeight:600}}>{paid?"✓ Bezahlt":"⏳ Ausstehend"}</span>
+                  <div onClick={async()=>{
+                    if(!paid){ await handleSavePayment(m.id, total); }
+                    else { await saveFinMonth(m.id,viewYear,viewMonth,{payment:null}); let nm=viewMonth+1,ny=viewYear; if(nm>11){nm=0;ny++;} await saveFinMonth(m.id,ny,nm,{carryover:0}); }
+                  }} style={{width:42,height:24,borderRadius:12,background:paid?"#27ae60":"#ddd",position:"relative",cursor:"pointer",transition:"background .2s",flexShrink:0}}>
+                    <div style={{position:"absolute",top:3,left:paid?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 4px rgba(0,0,0,.2)",transition:"left .2s"}}/>
+                  </div>
+                </label>
+              </div>
+              {paid&&<div style={{fontSize:12,color:"#555",marginBottom:4}}>Betrag: <b>{Number(fm.payment).toFixed(2)}€</b>
+                {diff!==0&&<span style={{fontSize:11,color:diff>0?"#27ae60":"#c0392b",marginLeft:8}}>→ Übertrag: {diff>0?"+":""}{diff.toFixed(2)}€</span>}
+              </div>}
+              {/* Abweichung eintragen */}
+              <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>Abweichender Betrag?</div>
               {editingPay
                 ? <div style={{...S.row,gap:6}}>
-                    <input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.50" value={editPay[m.id]} onChange={e=>setEditPay(p=>({...p,[m.id]:e.target.value}))} placeholder={total.toFixed(2)}/>
+                    <input style={{...S.input,width:90,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.50" value={editPay[m.id]} onChange={e=>setEditPay(p=>({...p,[m.id]:e.target.value}))} placeholder={total.toFixed(2)} autoFocus/>
                     <button style={{...S.btn("primary"),padding:"4px 10px",fontSize:11}} onClick={()=>handleSavePayment(m.id)}>OK</button>
                     <button style={{...S.btn("light"),padding:"4px 8px",fontSize:11}} onClick={()=>setEditPay(p=>({...p,[m.id]:undefined}))}>✕</button>
                   </div>
-                : <div style={{...S.row,gap:8}}>
-                    <span style={{fontWeight:600,fontSize:13,color:paid?"#555":"#c0392b"}}>{paid?`${Number(fm.payment).toFixed(2)}€`:"–"}</span>
-                    <button onClick={()=>setEditPay(p=>({...p,[m.id]:paid?String(fm.payment):String(total)}))} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#8b6040"}}>✏️</button>
-                  </div>}
+                : <button onClick={()=>setEditPay(p=>({...p,[m.id]:paid?String(fm.payment):String(total)}))} style={{...S.btn("light"),padding:"4px 12px",fontSize:11}}>✏️ Betrag anpassen</button>}
             </div>
-            {paid&&diff!==0&&(
-              <div style={{fontSize:11,color:diff>0?"#27ae60":"#c0392b",marginTop:4,fontWeight:600}}>
-                → Übertrag nächsten Monat: {diff>0?"+":""}{diff.toFixed(2)}€
-              </div>
-            )}
             {!paid&&m.phone&&(
               <a href={`https://wa.me/${m.phone.replace(/[^0-9]/g,"")}?text=Hallo%20${encodeURIComponent(m.name.split(" ")[0])}%2C%20deine%20Stallgeb%C3%BChr%20f%C3%BCr%20${encodeURIComponent(monthLabel)}%20betr%C3%A4gt%20${total.toFixed(2).replace(".",",")}%E2%82%AC.%20Bitte%20%C3%BCberweise%20zeitnah!%20%F0%9F%90%B4`}
                 style={{...S.btn("primary"),textDecoration:"none",padding:"6px 14px",fontSize:11,display:"inline-block",marginTop:10}}>
@@ -1193,7 +1202,7 @@ export default function StallApp() {
 
   const einstellerList = members.filter(m=>m.type==="einsteller"||m.type==="admin");
   const upcomingEvents = [...events].sort((a,b)=>a.date.localeCompare(b.date)).filter(e=>e.date>=dk(today)).slice(0,5);
-  const unpaid         = members.filter(m=>m.type==="einsteller"&&!m.paid);
+  const unpaid         = members.filter(m=>m.type==="einsteller"&&(()=>{ const fm=finMonths[m.id+"_"+curYear+"-"+String(curMonth+1).padStart(2,"0")]; return !fm||fm.payment===null||fm.payment===undefined; })());
   const mistWarnings   = einstellerList.filter(m=>{ const mQ=getMonthlyQuota(m,members,vacations,curYear,curMonth); return countMistMonth(mistData,m.id,curYear,curMonth)<mQ; });
   const getVacationLabel = memberId => {
     const vacs=vacations[memberId]||[]; const now=dk(today);
