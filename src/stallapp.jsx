@@ -168,6 +168,21 @@ export default function StallApp() {
   const [toast,       setToast]       = useState(null);
   const [finAccounts, setFinAccounts] = useState({}); // { memberId: {baseFee} }
   const [finMonths,   setFinMonths]   = useState({}); // { "memberId_YYYY-MM": {extras,payment,carryover,notes} }
+  // MembersScreen state (hoisted to prevent remount on keystroke)
+  const [editId,      setEditId]      = useState(null);
+  const [editData,    setEditData]    = useState({});
+  const [pinMode,     setPinMode]     = useState(false);
+  const [pins,        setPins]        = useState({old:"",n1:"",n2:""});
+  const [pinErr,      setPinErr]      = useState("");
+  // FinanzenScreen state (hoisted)
+  const [finViewMonth,setFinViewMonth]= useState(()=>new Date().getMonth());
+  const [finViewYear, setFinViewYear] = useState(()=>new Date().getFullYear());
+  const [editFee,     setEditFee]     = useState({});
+  const [editPay,     setEditPay]     = useState({});
+  const [addExtra,    setAddExtra]    = useState(null);
+  const [extraForm,   setExtraForm]   = useState({type:"Decken waschen",amount:"5",desc:""});
+  // HomeScreen mini calendar
+  const [selDay,      setSelDay]      = useState(null);
 
   const weekDates = getWeekDates(weekOffset);
   const isAdmin   = currentUser?.type==="admin";
@@ -540,7 +555,6 @@ export default function StallApp() {
 
         {/* ── Mini Month Calendar ── */}
         {(()=>{
-          const [selDay, setSelDay] = React.useState(null);
           const calYear  = today.getFullYear();
           const calMonth = today.getMonth();
           const calDays  = [];
@@ -1008,8 +1022,6 @@ export default function StallApp() {
   // MEMBERS
   // ══════════════════════════════════════════════════════════════════════════
   const MembersScreen = () => {
-    const [editId,   setEditId]   = useState(null);
-    const [editData, setEditData] = useState({});
     const startEdit = m => { setEditId(m.id); setEditData({name:m.name,horse:m.horse,phone:m.phone||"",pin:m.pin,type:m.type,einstellerId:m.einstellerId||""}); };
     const cancelEdit = () => setEditId(null);
     const saveEdit = async id => {
@@ -1070,50 +1082,44 @@ export default function StallApp() {
     };
     return (
       <div>
-        {!isAdmin&&(()=>{
-          const [pinMode,setPinMode]=React.useState(false);
-          const [pins,setPins]=React.useState({old:"",n1:"",n2:""});
-          const [pinErr,setPinErr]=React.useState("");
-          const handlePinChange=async()=>{
-            if(pins.old!==currentUser.pin){setPinErr("Alte PIN falsch");return;}
-            if(pins.n1.length!==4){setPinErr("Neue PIN muss 4 Ziffern haben");return;}
-            if(pins.n1!==pins.n2){setPinErr("PINs stimmen nicht überein");return;}
-            await saveMemberEdit(currentUser.id,{...currentUser,pin:pins.n1,einstellerId:currentUser.einstellerId||""});
-            setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");
-            showToast("✅ PIN erfolgreich geändert!");
-          };
-          return (
-            <div style={S.card}>
-              <div style={S.cTitle}>Mein Profil</div>
-              <div style={{...S.row,gap:10,marginBottom:12}}>
-                <div style={S.ava()}>{currentUser.name.charAt(0)}</div>
-                <div>
-                  <div style={{fontWeight:600,fontSize:14}}>{currentUser.name}</div>
-                  <div style={{fontSize:11,color:"#8b6040"}}>{currentUser.type==="einsteller"?"🐴 Einsteller":"🤝 Reitbeteiligung"}{currentUser.horse?` · ${currentUser.horse}`:""}</div>
-                  {currentUser.phone&&<div style={{fontSize:11,color:"#aaa"}}>📞 {currentUser.phone}</div>}
+        {!isAdmin&&(
+          <div style={S.card}>
+            <div style={S.cTitle}>Mein Profil</div>
+            <div style={{...S.row,gap:10,marginBottom:12}}>
+              <div style={S.ava()}>{currentUser.name.charAt(0)}</div>
+              <div>
+                <div style={{fontWeight:600,fontSize:14}}>{currentUser.name}</div>
+                <div style={{fontSize:11,color:"#8b6040"}}>{currentUser.type==="einsteller"?"🐴 Einsteller":"🤝 Reitbeteiligung"}{currentUser.horse?` · ${currentUser.horse}`:""}</div>
+                {currentUser.phone&&<div style={{fontSize:11,color:"#aaa"}}>📞 {currentUser.phone}</div>}
+              </div>
+            </div>
+            {!pinMode?(
+              <button style={{...S.btn("light"),padding:"8px 14px",fontSize:12}} onClick={()=>setPinMode(true)}>🔑 PIN ändern</button>
+            ):(
+              <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a",marginTop:8}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#c8913a",marginBottom:10}}>🔑 PIN ändern</div>
+                <label style={S.label}>Alte PIN</label>
+                <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.old} onChange={e=>setPins(p=>({...p,old:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
+                <label style={S.label}>Neue PIN</label>
+                <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.n1} onChange={e=>setPins(p=>({...p,n1:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
+                <label style={S.label}>Neue PIN bestätigen</label>
+                <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.n2} onChange={e=>setPins(p=>({...p,n2:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
+                {pinErr&&<div style={{fontSize:11,color:"#c0392b",marginBottom:8}}>{pinErr}</div>}
+                <div style={{...S.row,justifyContent:"flex-end",gap:8}}>
+                  <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={()=>{setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");}}>Abbrechen</button>
+                  <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={async()=>{
+                    if(pins.old!==currentUser.pin){setPinErr("Alte PIN falsch");return;}
+                    if(pins.n1.length!==4){setPinErr("Neue PIN muss 4 Ziffern haben");return;}
+                    if(pins.n1!==pins.n2){setPinErr("PINs stimmen nicht überein");return;}
+                    await saveMemberEdit(currentUser.id,{...currentUser,pin:pins.n1,einstellerId:currentUser.einstellerId||""});
+                    setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");
+                    showToast("✅ PIN erfolgreich geändert!");
+                  }}>💾 Speichern</button>
                 </div>
               </div>
-              {!pinMode?(
-                <button style={{...S.btn("light"),padding:"8px 14px",fontSize:12}} onClick={()=>setPinMode(true)}>🔑 PIN ändern</button>
-              ):(
-                <div style={{background:"#faf6f0",borderRadius:10,padding:12,border:"1.5px solid #c8913a",marginTop:8}}>
-                  <div style={{fontSize:12,fontWeight:700,color:"#c8913a",marginBottom:10}}>🔑 PIN ändern</div>
-                  <label style={S.label}>Alte PIN</label>
-                  <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.old} onChange={e=>setPins(p=>({...p,old:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
-                  <label style={S.label}>Neue PIN</label>
-                  <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.n1} onChange={e=>setPins(p=>({...p,n1:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
-                  <label style={S.label}>Neue PIN bestätigen</label>
-                  <input style={{...S.input,marginBottom:8}} type="password" inputMode="numeric" maxLength={4} value={pins.n2} onChange={e=>setPins(p=>({...p,n2:e.target.value.replace(/\D/,"")}))} placeholder="••••"/>
-                  {pinErr&&<div style={{fontSize:11,color:"#c0392b",marginBottom:8}}>{pinErr}</div>}
-                  <div style={{...S.row,justifyContent:"flex-end",gap:8}}>
-                    <button style={{...S.btn("light"),padding:"7px 14px",fontSize:12}} onClick={()=>{setPinMode(false);setPins({old:"",n1:"",n2:""});setPinErr("");}}>Abbrechen</button>
-                    <button style={{...S.btn("primary"),padding:"7px 14px",fontSize:12}} onClick={handlePinChange}>💾 Speichern</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+            )}
+          </div>
+        )}
         {einstellerList.map(e=>(
           <div key={e.id} style={S.card}>
             <MRow m={e} isChild={false}/>
@@ -1193,20 +1199,15 @@ export default function StallApp() {
   // ══════════════════════════════════════════════════════════════════════════
   const FinanzenScreen = () => {
     const einsteller = members.filter(m=>m.type==="einsteller");
-    const [viewMonth, setViewMonth] = useState(today.getMonth());
-    const [viewYear,  setViewYear]  = useState(today.getFullYear());
-    const [editFee,   setEditFee]   = useState({}); // {memberId: feeString}
-    const [editPay,   setEditPay]   = useState({}); // {memberId: payString}
-    const [addExtra,  setAddExtra]  = useState(null); // memberId being edited
-    const [extraForm, setExtraForm] = useState({type:"Decken waschen",amount:"5",desc:""});
+    const viewMonth = finViewMonth;
+    const viewYear  = finViewYear;
 
     const monthLabel = new Date(viewYear,viewMonth,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"});
-    const isPrevMonth = viewYear < today.getFullYear() || (viewYear===today.getFullYear() && viewMonth < today.getMonth());
 
     const goMonth = (dir) => {
       let m=viewMonth+dir, y=viewYear;
       if(m>11){m=0;y++;} if(m<0){m=11;y--;}
-      setViewMonth(m); setViewYear(y);
+      setFinViewMonth(m); setFinViewYear(y);
     };
 
     const handleSaveFee = async (memberId) => {
