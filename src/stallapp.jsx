@@ -626,9 +626,12 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
 
 // ── Mist Split Widget ────────────────────────────────────────────────────────
 function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, saveMemberEdit, showToast }) {
-  const [open, setOpen]     = useState(false);
-  const [mode, setMode]     = useState(currentUser.mistMode||"percent");
-  const [value, setValue]   = useState(currentUser.mistShare??50);
+  const isAdminUser  = currentUser.type==="admin";
+  const [open, setOpen]   = useState(false);
+  // Admin only uses fixed_rb mode (how many duties per RB per month)
+  const initMode = isAdminUser ? "fixed_rb" : (currentUser.mistMode||"percent");
+  const [mode, setMode]   = useState(initMode);
+  const [value, setValue] = useState(currentUser.mistShare??50);
 
   const weeks        = getWeeksInMonth(viewYear, viewMonth);
   const totalMonthly = weeks.length * 2;
@@ -636,32 +639,23 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
 
   // Sync after save
   useEffect(() => {
-    const m = currentUser.mistMode||"percent";
+    const m = isAdminUser ? "fixed_rb" : (currentUser.mistMode||"percent");
     setMode(m);
     setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : currentUser.mistShare??50);
   }, [currentUser.mistMode, currentUser.mistShare]);
 
-  // Compute display values for current month
   const getDisplayCounts = (m, v) => {
-    if(m==="percent") {
-      const my = Math.round(totalMonthly * v/100);
-      return { my, rb: totalMonthly - my };
-    }
-    if(m==="fixed_e") {
-      return { my: v, rb: Math.max(0, totalMonthly - v) };
-    }
-    if(m==="fixed_rb") {
-      const rbTotal = v * rbs.length;
-      return { my: Math.max(0, totalMonthly - rbTotal), rb: v };
-    }
-    return { my: 0, rb: 0 };
+    if(m==="percent") { const my=Math.round(totalMonthly*v/100); return {my, rb:totalMonthly-my}; }
+    if(m==="fixed_e") { return {my:v, rb:Math.max(0,totalMonthly-v)}; }
+    if(m==="fixed_rb") { const rbTotal=v*rbs.length; return {my:Math.max(0,totalMonthly-rbTotal), rb:v}; }
+    return {my:0, rb:0};
   };
 
-  const current   = getDisplayCounts(currentUser.mistMode||"percent", currentUser.mistShare??50);
-  const preview   = getDisplayCounts(mode, value);
+  const current = getDisplayCounts(isAdminUser?"fixed_rb":(currentUser.mistMode||"percent"), currentUser.mistShare??50);
+  const preview = getDisplayCounts(mode, value);
 
   const handleOpen = () => {
-    const m = currentUser.mistMode||"percent";
+    const m = isAdminUser ? "fixed_rb" : (currentUser.mistMode||"percent");
     setMode(m);
     setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : currentUser.mistShare??50);
     setOpen(true);
@@ -671,7 +665,7 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
     setOpen(false);
   };
 
-  const MODES = [
+  const MODES = isAdminUser ? [] : [
     { key:"percent",  label:"% Aufteilung",    icon:"⚖️" },
     { key:"fixed_e",  label:"Meine Dienste",   icon:"🐴" },
     { key:"fixed_rb", label:"Reitbet. Dienste",icon:"🤝" },
@@ -684,9 +678,14 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
   return (
     <>
       <div style={{marginTop:14,borderTop:"1px solid #f0e8d8",paddingTop:12}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f",marginBottom:2}}>⚖️ Aufteilung {monthLabel}</div>
+        <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f",marginBottom:2}}>
+          {isAdminUser ? "🤝 Mistdienste Reitbeteiligung" : `⚖️ Aufteilung ${monthLabel}`}
+        </div>
         <div style={{fontSize:11,color:"#8b6040"}}>
-          Du: <b>{current.my}×</b> · Reitbet.: <b>{rbs.length>1?`${(current.rb/rbs.length).toFixed(1)}× je`:`${current.rb}×`}</b> (von {totalMonthly} gesamt)
+          {isAdminUser
+            ? <>{rbs.map(rb=><span key={rb.id}>{rb.name.split(" ")[0]}: <b>{current.rb}×</b> / Monat · </span>)}</>
+            : <>Du: <b>{current.my}×</b> · Reitbet.: <b>{rbs.length>1?`${(current.rb/rbs.length).toFixed(1)}× je`:`${current.rb}×`}</b> (von {totalMonthly} gesamt)</>
+          }
         </div>
       </div>
 
@@ -699,12 +698,16 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
           <button onClick={handleOpen} style={{...S.btn("light"),padding:"6px 12px",fontSize:12}}>✏️ Anpassen</button>
         </div>
         <div style={{...S.row,gap:6}}>
-          <div style={{flex:1,textAlign:"center",padding:"8px 4px",background:"#fff",borderRadius:8,border:"1.5px solid #c8913a"}}>
-            <div style={{fontSize:10,color:"#8b6040",marginBottom:2}}>Du</div>
-            <div style={{fontSize:20,fontWeight:700,color:"#c8913a"}}>{current.my}×</div>
-            <div style={{fontSize:9,color:"#aaa"}}>/ Monat</div>
-          </div>
-          <div style={{display:"flex",alignItems:"center",fontSize:16,color:"#ccc",padding:"0 2px"}}>⟷</div>
+          {!isAdminUser&&(
+            <>
+              <div style={{flex:1,textAlign:"center",padding:"8px 4px",background:"#fff",borderRadius:8,border:"1.5px solid #c8913a"}}>
+                <div style={{fontSize:10,color:"#8b6040",marginBottom:2}}>Du</div>
+                <div style={{fontSize:20,fontWeight:700,color:"#c8913a"}}>{current.my}×</div>
+                <div style={{fontSize:9,color:"#aaa"}}>/ Monat</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",fontSize:16,color:"#ccc",padding:"0 2px"}}>⟷</div>
+            </>
+          )}
           {rbs.map(rb=>(
             <div key={rb.id} style={{flex:1,textAlign:"center",padding:"8px 4px",background:"#fff",borderRadius:8,border:"1.5px solid #a8d8c8"}}>
               <div style={{fontSize:10,color:"#16a085",marginBottom:2}}>{rb.name.split(" ")[0]}</div>
@@ -717,51 +720,57 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
 
       {open&&(
         <div style={S.modal}><div style={{...S.mBox,maxWidth:360}}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:12,color:"#3d2b1f"}}>Aufteilung anpassen</div>
-
-          {/* Mode selector */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:18}}>
-            {MODES.map(m=>(
-              <button key={m.key} onClick={()=>{ setMode(m.key); setValue(m.key==="percent"?Math.round((currentUser.mistShare??50)/10)*10:m.key==="fixed_e"?Math.round(totalMonthly/2):Math.round(totalMonthly/2/rbs.length)); }}
-                style={{padding:"10px 4px",borderRadius:10,border:`2px solid ${mode===m.key?"#c8913a":"#e2d5c0"}`,
-                  background:mode===m.key?"#fef3e2":"#fff",cursor:"pointer",textAlign:"center",
-                  color:mode===m.key?"#c8913a":"#8b6040",fontSize:10,fontWeight:mode===m.key?700:400,transition:"all .15s"}}>
-                <div style={{fontSize:16,marginBottom:3}}>{m.icon}</div>
-                {m.label}
-              </button>
-            ))}
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:12,color:"#3d2b1f"}}>
+            {isAdminUser ? "Mistdienste Reitbeteiligung" : "Aufteilung anpassen"}
           </div>
+
+          {/* Mode selector — only for non-admin */}
+          {!isAdminUser&&(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:18}}>
+              {MODES.map(m=>(
+                <button key={m.key} onClick={()=>{ setMode(m.key); setValue(m.key==="percent"?Math.round((currentUser.mistShare??50)/10)*10:m.key==="fixed_e"?Math.round(totalMonthly/2):Math.round(totalMonthly/2/rbs.length)); }}
+                  style={{padding:"10px 4px",borderRadius:10,border:`2px solid ${mode===m.key?"#c8913a":"#e2d5c0"}`,
+                    background:mode===m.key?"#fef3e2":"#fff",cursor:"pointer",textAlign:"center",
+                    color:mode===m.key?"#c8913a":"#8b6040",fontSize:10,fontWeight:mode===m.key?700:400,transition:"all .15s"}}>
+                  <div style={{fontSize:16,marginBottom:3}}>{m.icon}</div>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Mode description */}
           <div style={{fontSize:11,color:"#8b6040",background:"#faf6f0",borderRadius:8,padding:"8px 12px",marginBottom:16}}>
-            {mode==="percent" && "Aufteilung in Prozent — passt sich automatisch an Monate mit mehr/weniger Wochen an."}
-            {mode==="fixed_e" && `Ich mache jeden Monat genau X Dienste — der Rest geht an die Reitbeteiligung.`}
-            {mode==="fixed_rb" && `Die Reitbeteiligung macht jeden Monat genau X Dienste — der Rest geht an mich.`}
+            {isAdminUser && `Wie viele Mistdienste soll die Reitbeteiligung pro Monat erledigen?`}
+            {!isAdminUser&&mode==="percent" && "Aufteilung in Prozent — passt sich automatisch an Monate mit mehr/weniger Wochen an."}
+            {!isAdminUser&&mode==="fixed_e" && "Ich mache jeden Monat genau X Dienste — der Rest geht an die Reitbeteiligung."}
+            {!isAdminUser&&mode==="fixed_rb" && "Die Reitbeteiligung macht jeden Monat genau X Dienste — der Rest geht an mich."}
           </div>
 
           {/* Visual split bar */}
           <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",marginBottom:16,background:"#f0e8d8"}}>
-            <div style={{flex:preview.my||0.001,background:"#c8913a",transition:"flex .2s",borderRadius:preview.my===0?"0":"10px 0 0 10px"}}/>
-            <div style={{flex:preview.rb||0.001,background:"#a8d8c8",transition:"flex .2s",borderRadius:preview.rb===0?"0":"0 10px 10px 0"}}/>
+            {!isAdminUser&&<div style={{flex:preview.my||0.001,background:"#c8913a",transition:"flex .2s",borderRadius:preview.my===0?"0":"10px 0 0 10px"}}/>}
+            <div style={{flex:preview.rb||0.001,background:"#a8d8c8",transition:"flex .2s",borderRadius:isAdminUser||preview.my===0?"10px":"0 10px 10px 0"}}/>
           </div>
 
           {/* Value input */}
-          <div style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:12,padding:"12px 14px",background:"#faf6f0",borderRadius:10,border:"1.5px solid #c8913a"}}>
+          <div style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:12,padding:"12px 14px",background:"#f0faf6",borderRadius:10,border:"1.5px solid #a8d8c8"}}>
             <div>
               <div style={{fontSize:13,fontWeight:700,color:"#3d2b1f"}}>
-                {mode==="percent"?"Mein Anteil":mode==="fixed_e"?"Meine Dienste / Monat":"Dienste RB / Monat"}
+                {isAdminUser ? "Dienste RB / Monat" : mode==="percent"?"Mein Anteil":mode==="fixed_e"?"Meine Dienste / Monat":"Dienste RB / Monat"}
               </div>
               <div style={{fontSize:11,color:"#8b6040",marginTop:2}}>
-                {mode==="percent" && `= ${preview.my} Dienste im ${monthLabel}`}
-                {mode==="fixed_e" && `RB bekommt ${preview.rb} Dienste im ${monthLabel}`}
-                {mode==="fixed_rb" && `Ich mache ${preview.my} Dienste im ${monthLabel}`}
+                {isAdminUser && `${rbs.map(rb=>rb.name.split(" ")[0]).join(" & ")} je ${value}× im ${monthLabel}`}
+                {!isAdminUser&&mode==="percent" && `= ${preview.my} Dienste im ${monthLabel}`}
+                {!isAdminUser&&mode==="fixed_e" && `RB bekommt ${preview.rb} Dienste im ${monthLabel}`}
+                {!isAdminUser&&mode==="fixed_rb" && `Ich mache ${preview.my} Dienste im ${monthLabel}`}
               </div>
             </div>
             <div style={{...S.row,gap:10,alignItems:"center"}}>
               <button onClick={()=>setValue(v=>Math.max(minVal,v-step))} disabled={value<=minVal}
                 style={{width:34,height:34,borderRadius:17,border:"none",background:value>minVal?"#e2d5c0":"#f5f0e8",
                   cursor:value>minVal?"pointer":"default",fontSize:20,color:"#3d2b1f",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-              <div style={{minWidth:42,textAlign:"center",fontWeight:700,fontSize:20,color:"#c8913a"}}>
+              <div style={{minWidth:42,textAlign:"center",fontWeight:700,fontSize:20,color:"#16a085"}}>
                 {value}{mode==="percent"?"%":"×"}
               </div>
               <button onClick={()=>setValue(v=>Math.min(maxVal,v+step))} disabled={value>=maxVal}
@@ -772,10 +781,12 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
 
           {/* Result preview */}
           <div style={{...S.row,gap:6,marginBottom:16}}>
-            <div style={{flex:1,textAlign:"center",padding:"8px",background:"#fef3e2",borderRadius:8,border:"1px solid #c8913a"}}>
-              <div style={{fontSize:10,color:"#8b6040"}}>Du ({monthLabel})</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#c8913a"}}>{preview.my}×</div>
-            </div>
+            {!isAdminUser&&(
+              <div style={{flex:1,textAlign:"center",padding:"8px",background:"#fef3e2",borderRadius:8,border:"1px solid #c8913a"}}>
+                <div style={{fontSize:10,color:"#8b6040"}}>Du ({monthLabel})</div>
+                <div style={{fontSize:18,fontWeight:700,color:"#c8913a"}}>{preview.my}×</div>
+              </div>
+            )}
             {rbs.map(rb=>(
               <div key={rb.id} style={{flex:1,textAlign:"center",padding:"8px",background:"#f0faf6",borderRadius:8,border:"1px solid #a8d8c8"}}>
                 <div style={{fontSize:10,color:"#16a085"}}>{rb.name.split(" ")[0]}</div>
@@ -962,7 +973,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                     <div style={{paddingLeft:isChild?10:0}}>
                       {isChild&&<div style={{fontSize:8,color:"#b89060",marginBottom:1}}>↳ Beteil.</div>}
                       <div style={{fontSize:11,fontWeight:isMe?700:500,color:isMe?"#c8913a":"#2c2416",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name.split(" ")[0]}</div>
-                      {m.type==="admin"?null:onVacWeek?<div style={{fontSize:9,color:"#16a085",fontWeight:600}}>🌴 Urlaub</div>
+                      {m.type==="admin"&&m.einstellerId===null?null:onVacWeek?<div style={{fontSize:9,color:"#16a085",fontWeight:600}}>🌴 Urlaub</div>
                         :<div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{monthC}/{monthQ}Mo</div>}
                     </div>
                     {weekDates.map(d=>{
@@ -1011,29 +1022,37 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                 const isPast=d<new Date(dk(today)); const hasEntry=bookedIds.length>0;
                 const myEntry=bookedIds.includes(currentUser.id);
                 const bookedMember=hasEntry?members.find(m=>m.id===bookedIds[0]):null;
-                const someoneOnVac=[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].some(m=>isOnVacationDay(m.id,k,vacations));
+                const vacMembers=[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].filter(m=>isOnVacationDay(m.id,k,vacations));
+                const someoneOnVac=vacMembers.length>0;
                 const canClick=!hasEntry||myEntry; // admin can click free days or own entry
                 return (
                   <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
                     style={{aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                    background:myEntry?"#3d2b1f":hasEntry?"#c8913a":isPast?"#f5f0e8":"#fff",
-                    border:isToday?"2px solid #c8913a":myEntry?"2px solid #3d2b1f":hasEntry?"2px solid #a07030":"1px solid #e2d5c0",
+                    background:myEntry?"#3d2b1f":hasEntry?"#c8913a":someoneOnVac?"#f0faf6":isPast?"#f5f0e8":"#fff",
+                    border:isToday?"2px solid #c8913a":myEntry?"2px solid #3d2b1f":hasEntry?"2px solid #a07030":someoneOnVac?"1px solid #a8d8c8":"1px solid #e2d5c0",
                     cursor:canClick?"pointer":"default",transition:"all .15s"}}>
-                    <div style={{fontSize:10,fontWeight:isToday?700:400,color:(hasEntry||myEntry)?"#fff":"#2c2416"}}>{d.getDate()}</div>
+                    <div style={{fontSize:10,fontWeight:isToday?700:400,color:(hasEntry||myEntry)?"#fff":someoneOnVac?"#16a085":"#2c2416"}}>{d.getDate()}</div>
                     {myEntry&&<div style={{fontSize:7,color:"#f5c842",fontWeight:700}}>✓ Ich</div>}
                     {!myEntry&&hasEntry&&<div style={{fontSize:7,color:"#fff5e0",fontWeight:600,lineHeight:1,textAlign:"center",overflow:"hidden",maxWidth:"90%",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bookedMember?.name.split(" ")[0]}</div>}
-                    {!hasEntry&&someoneOnVac&&<div style={{fontSize:8}}>🌴</div>}
+                    {!hasEntry&&someoneOnVac&&(
+                      <div style={{fontSize:7,color:"#16a085",fontWeight:700,lineHeight:1.1,textAlign:"center",maxWidth:"95%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {vacMembers.map(m=>m.name.split(" ")[0]).join(", ")}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
             <div style={{display:"flex",flexWrap:"wrap",gap:8,fontSize:10,color:"#aaa",marginBottom:16}}>
               <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:3,background:"#c8913a",display:"inline-block"}}/> Belegt</span>
-              <span>🌴 = Urlaub</span>
+              <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:3,background:"#a8d8c8",border:"1px solid #a8d8c8",display:"inline-block"}}/> Urlaub (Name)</span>
             </div>
             <div style={{borderTop:"1px solid #f0e8d8",paddingTop:12}}>
               <div style={{fontWeight:700,fontSize:12,color:"#3d2b1f",marginBottom:8}}>Offene Dienste {monthLabel}</div>
-              {[...einstellerList.filter(m=>m.type!=="admin"),...members.filter(m=>m.type==="reitbeteiligung")].map(m=>{
+              {einstellerList.filter(m=>m.type!=="admin").flatMap(e=>{
+                const rbs = members.filter(rb=>rb.type==="reitbeteiligung"&&rb.einstellerId===e.id);
+                return [e, ...rbs];
+              }).map(m=>{
                 const mQ=getMonthlyQuota(m,members,vacations,viewYear,viewMonth);
                 const mC=countMistMonth(mistData,m.id,viewYear,viewMonth);
                 const isChild=m.type==="reitbeteiligung";
@@ -1048,6 +1067,29 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                   </div>
                 );
               })}
+              {/* Admin's own RBs */}
+              {(()=>{
+                const adminRbs = members.filter(rb=>rb.type==="reitbeteiligung"&&rb.einstellerId===currentUser.id);
+                if(adminRbs.length===0) return null;
+                return (<>
+                  <div style={{fontSize:10,fontWeight:700,color:"#8b6040",marginTop:10,marginBottom:4}}>👑 Meine Reitbeteiligungen</div>
+                  {adminRbs.map(rb=>{
+                    const mQ=getMonthlyQuota(rb,members,vacations,viewYear,viewMonth);
+                    const mC=countMistMonth(mistData,rb.id,viewYear,viewMonth);
+                    return (
+                      <div key={rb.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",paddingLeft:12,borderBottom:"1px solid #f5f0e8"}}>
+                        <div>
+                          <span style={{fontSize:9,color:"#b89060"}}>↳ </span>
+                          <span style={{fontSize:12,fontWeight:mC>=mQ?400:600,color:mC>=mQ?"#aaa":"#2c2416"}}>{rb.name.split(" ")[0]} {rb.name.split(" ")[1]?.charAt(0)}.</span>
+                          {(vacations[rb.id]||[]).length>0&&<span style={{fontSize:10}}> 🌴</span>}
+                        </div>
+                        <span style={{fontSize:11,fontWeight:700,color:mC>=mQ?"#27ae60":"#c0392b",background:mC>=mQ?"#d5f5e3":"#fdecea",padding:"3px 8px",borderRadius:20}}>{`${mC}/${mQ}×`}{mC>=mQ&&" ✓"}</span>
+                      </div>
+                    );
+                  })}
+                  <MistSplitWidget currentUser={currentUser} rbs={adminRbs} members={members} vacations={vacations} viewYear={viewYear} viewMonth={viewMonth} saveMemberEdit={saveMemberEdit} showToast={showToast}/>
+                </>);
+              })()}
             </div>
           </>)}
         </div>
@@ -1199,7 +1241,8 @@ function MembersScreen({ currentUser, isAdmin, members, einstellerList, vacation
 }
 
 function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts, finViewMonth, finViewYear, setFinViewMonth, setFinViewYear, editFee, setEditFee, editPay, setEditPay, addExtra, setAddExtra, extraForm, setExtraForm, saveFinMonth, saveBaseFee, calcTotal, calcCarryover, getFinMonth, getBaseFee, showToast }) {
-  const einsteller = members.filter(m=>m.type==="einsteller");
+  const einsteller   = members.filter(m=>m.type==="einsteller");
+  const adminRbsAll  = members.filter(m=>m.type==="reitbeteiligung"&&members.find(a=>a.type==="admin"&&a.id===m.einstellerId));
   const viewMonth  = finViewMonth;
   const viewYear   = finViewYear;
   const monthLabel = new Date(viewYear,viewMonth,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"});
@@ -1209,6 +1252,7 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
     { label:"Decken waschen",   unitPrice:5,  unit:"Decke",    hasQty:true  },
     { label:"Regendecke",       unitPrice:10, unit:"Decke",    hasQty:true  },
     { label:"Vollpension",      unitPrice:65, unit:"Monat",    hasQty:false },
+    { label:"Reitunterricht",   unitPrice:0,  unit:"",         hasQty:false },
     { label:"Sonstiges",        unitPrice:0,  unit:"",         hasQty:false },
   ];
   const getExtraConfig = (type) => EXTRA_TYPES.find(t=>t.label===type)||EXTRA_TYPES[0];
@@ -1520,6 +1564,102 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
           </div>
         );
       })}
+      {adminRbsAll.length>0&&(
+        <div style={{...S.card,borderTop:"3px solid #c8913a"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#3d2b1f",marginBottom:12}}>👑 Reitbeteiligungen des Admins</div>
+          {adminRbsAll.map(m=>{
+            const fm=getFinMonth(m.id,viewYear,viewMonth); const base=getBaseFee(m.id);
+            const extras=fm.extras||[]; const carry=calcCarryover(m.id,viewYear,viewMonth);
+            const total=calcTotal(m.id,viewYear,viewMonth); const paid=fm.payment!==null&&fm.payment!==undefined;
+            const diff=paid?Number((fm.payment-total).toFixed(2)):null;
+            const editingFee=editFee[m.id]!==undefined; const editingPay=editPay[m.id]!==undefined;
+            return (
+              <div key={m.id} style={{marginBottom:16,paddingBottom:16,borderBottom:"1px solid #f0e8d8"}}>
+                <div style={{...S.row,justifyContent:"space-between",marginBottom:8}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:14}}>{m.name}</div>
+                    <div style={{fontSize:11,color:"#8b6040"}}>🤝 Reitbeteiligung{m.horse?` · ${m.horse}`:""}</div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:20,fontWeight:700,color:"#3d2b1f"}}>{total.toFixed(2)}€</div>
+                    <div style={{fontSize:10,color:paid?"#27ae60":"#c0392b",fontWeight:600}}>{paid?"✓ Bezahlt":"⏳ Offen"}</div>
+                  </div>
+                </div>
+                {/* Grundgebühr */}
+                <div style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
+                  <span style={{fontSize:12,color:"#8b6040"}}>Grundgebühr</span>
+                  {editingFee
+                    ? <div style={{...S.row,gap:6}}><input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="5" value={editFee[m.id]} onChange={e=>setEditFee(p=>({...p,[m.id]:e.target.value}))}/><button style={S.btn("primary")} onClick={()=>handleSaveFee(m.id)}>✓</button><button style={S.btn("light")} onClick={()=>setEditFee(p=>({...p,[m.id]:undefined}))}>✗</button></div>
+                    : <div style={{...S.row,gap:8}}><span style={{fontSize:12,fontWeight:600}}>{base.toFixed(2)}€</span><button onClick={()=>setEditFee(p=>({...p,[m.id]:String(base)}))} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#c8913a"}}>✏️</button></div>}
+                </div>
+                {/* Extras */}
+                {extras.map(ex=>(
+                  <div key={ex.id} style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
+                    <span style={{fontSize:12,color:"#8b6040"}}>{ex.type}{ex.desc?` · ${ex.desc}`:""}{ex.qty?` (${ex.qty}×)`:""}</span>
+                    <div style={{...S.row,gap:8}}><span style={{fontSize:12,fontWeight:600}}>{Number(ex.amount).toFixed(2)}€</span><button onClick={()=>handleRemoveExtra(m.id,ex.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#ccc"}}>✗</button></div>
+                  </div>
+                ))}
+                {carry!==0&&(
+                  <div style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
+                    <span style={{fontSize:12,color:"#8b6040"}}>Übertrag Vormonat</span>
+                    <span style={{fontSize:12,fontWeight:600,color:carry>0?"#c0392b":"#27ae60"}}>{carry>0?"+":"-"}{Math.abs(carry).toFixed(2)}€</span>
+                  </div>
+                )}
+                <div style={{...S.row,justifyContent:"space-between",padding:"8px 0",fontWeight:700}}>
+                  <span>Gesamt</span><span style={{color:"#3d2b1f"}}>{total.toFixed(2)}€</span>
+                </div>
+                {/* Extras hinzufügen */}
+                <button onClick={()=>{setAddExtra(m.id);resetExtraForm();}} style={{...S.btn("light"),fontSize:11,padding:"5px 12px",marginBottom:10}}>+ Extra hinzufügen</button>
+                {addExtra===m.id&&(
+                  <div style={S.modal}><div style={S.mBox}>
+                    <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,marginBottom:12,color:"#3d2b1f"}}>Extra buchen · {m.name.split(" ")[0]}</div>
+                    <label style={S.label}>Typ</label>
+                    <select style={S.input} value={extraForm.type} onChange={e=>onExtraTypeChange(e.target.value)}>
+                      {EXTRA_TYPES.map(t=><option key={t.label}>{t.label}</option>)}
+                    </select>
+                    {getExtraConfig(extraForm.type).hasQty&&(<>
+                      <label style={S.label}>Anzahl</label>
+                      <input style={S.input} type="number" min="1" value={extraForm.qty} onChange={e=>setExtraForm(p=>({...p,qty:e.target.value,amount:String(getExtraConfig(extraForm.type).unitPrice*(parseInt(e.target.value)||1))}))}/>
+                      <div style={{fontSize:11,color:"#c8913a",marginBottom:8}}>{(getExtraConfig(extraForm.type).unitPrice*(parseInt(extraForm.qty)||1)).toFixed(2)}€</div>
+                    </>)}
+                    {!getExtraConfig(extraForm.type).hasQty&&extraForm.type!=="Vollpension"&&(<>
+                      <label style={S.label}>Betrag (€)</label>
+                      <input style={S.input} type="number" step="0.50" min="0" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
+                      <label style={S.label}>Beschreibung (optional)</label>
+                      <input style={S.input} placeholder="z.B. 3 Einheiten" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
+                    </>)}
+                    {extraForm.type==="Vollpension"&&<div style={{textAlign:"center",fontSize:13,color:"#c8913a",fontWeight:700,marginBottom:12}}>65.00€ / Monat</div>}
+                    <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+                      <button style={S.btn("light")} onClick={()=>setAddExtra(null)}>Abbrechen</button>
+                      <button style={S.btn("primary")} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
+                    </div>
+                  </div></div>
+                )}
+                {/* Zahlung */}
+                <div style={{padding:"10px 0",borderTop:"1px solid #f0e8d8"}}>
+                  <div style={{...S.row,justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:12,fontWeight:600}}>Zahlung</span>
+                    <div style={{...S.row,gap:8,alignItems:"center"}}>
+                      {editingPay
+                        ? <div style={{...S.row,gap:6}}><input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.01" value={editPay[m.id]} onChange={e=>setEditPay(p=>({...p,[m.id]:e.target.value}))}/><button style={S.btn("primary")} onClick={()=>handleSavePayment(m.id)}>✓</button><button style={S.btn("light")} onClick={()=>setEditPay(p=>({...p,[m.id]:undefined}))}>✗</button></div>
+                        : <>
+                          <div onClick={async()=>{ if(paid){await saveFinMonth(m.id,viewYear,viewMonth,{payment:null});}else{await handleSavePayment(m.id,total);}}} style={{width:28,height:28,borderRadius:8,border:`2px solid ${paid?"#27ae60":"#e2d5c0"}`,background:paid?"#27ae60":"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+                            {paid&&<span style={{color:"#fff",fontWeight:700,fontSize:14}}>✓</span>}
+                          </div>
+                          <span style={{fontSize:12,color:paid?"#27ae60":"#aaa"}}>{paid?`${Number(fm.payment).toFixed(2)}€ bezahlt`:"Noch nicht bezahlt"}</span>
+                          {!editingPay&&<button onClick={()=>setEditPay(p=>({...p,[m.id]:paid?String(fm.payment):String(total)}))} style={{...S.btn("light"),padding:"4px 12px",fontSize:11}}>✏️ Betrag anpassen</button>}
+                        </>}
+                    </div>
+                  </div>
+                  {paid&&diff!==0&&<div style={{fontSize:11,color:diff>0?"#27ae60":"#c0392b",marginTop:4}}>
+                    {diff>0?`Überzahlung: +${diff.toFixed(2)}€ → nächsten Monat gutgeschrieben`:`Unterzahlung: ${diff.toFixed(2)}€ → nächsten Monat aufgeschlagen`}
+                  </div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
