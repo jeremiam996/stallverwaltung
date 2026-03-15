@@ -217,7 +217,7 @@ const Ic = ({ n, s=20 }) => {
 // SCREEN COMPONENTS — defined outside StallApp so React never remounts them
 // ══════════════════════════════════════════════════════════════════════════
 
-function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations, finMonths, finAccounts, selDay, setSelDay, upcomingEvents, unpaid, mistWarnings, getVacationLabel, calcTotal, getFinMonth }) {
+function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations, finMonths, finAccounts, selDay, setSelDay, upcomingEvents, unpaid, mistWarnings, getVacationLabel, calcTotal, getFinMonth, rbVisits }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const viewDate  = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
   const viewYear  = viewDate.getFullYear();
@@ -240,8 +240,6 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
     const myMist   = (mistData[k]||[]).includes(currentUser.id);
     const myVac    = isOnVacationDay(currentUser.id, k, vacations);
     const dayEvts  = events.filter(e=>e.date===k);
-    // Whose vacations to show:
-    // Admin: everyone | Einsteller: admin + own RBs | Reitbeteiligung: admin + own Einsteller
     const otherVacs = members
       .filter(m => {
         if(m.id===currentUser.id) return false;
@@ -252,7 +250,17 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
         return false;
       })
       .flatMap(m=>(vacations[m.id]||[]).filter(v=>v.from<=k&&v.to>=k).map(v=>({...v, memberName:m.name.split(" ")[0]})));
-    return { k, myMist, myVac, dayEvts, adminVacs: otherVacs };
+    // RB visits: Einsteller sees their RBs' visits; RB sees own visits; Admin sees their RBs' visits
+    const myRbVisits = (rbVisits||[]).filter(v => {
+      if(v.date!==k) return false;
+      if(v.memberId===currentUser.id) return true; // own visit (RB)
+      const rb = members.find(m=>m.id===v.memberId);
+      if(!rb) return false;
+      if(currentUser.type==="einsteller" && rb.einstellerId===currentUser.id) return true;
+      if(isAdmin && rb.einstellerId===currentUser.id) return true;
+      return false;
+    }).map(v=>({...v, memberName: members.find(m=>m.id===v.memberId)?.name.split(" ")[0]||""}));
+    return { k, myMist, myVac, dayEvts, adminVacs: otherVacs, myRbVisits };
   };
   const getDots = (info, isSelected) => {
     const dots = [];
@@ -260,6 +268,7 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
     if(info.myMist) dots.push("#c8913a");
     info.dayEvts.forEach(e=>dots.push(e.color));
     if(info.adminVacs?.length>0) dots.push("#b0b0b0");
+    if(info.myRbVisits?.length>0) dots.push("#9b59b6");
     return dots.map((c,i)=>(
       <div key={i} style={{width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":c,flexShrink:0}}/>
     ));
@@ -416,6 +425,12 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
           <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c8913a",display:"inline-block"}}/> Mein Mist</span>
           <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#16a085",display:"inline-block"}}/> Urlaub</span>
           <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c0392b",display:"inline-block"}}/> Termin</span>
+          {(currentUser.type==="einsteller"||isAdmin)&&(rbVisits||[]).some(v=>members.find(m=>m.id===v.memberId&&m.einstellerId===currentUser.id))&&(
+            <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#9b59b6",display:"inline-block"}}/> RB-Besuch</span>
+          )}
+          {currentUser.type==="reitbeteiligung"&&(rbVisits||[]).some(v=>v.memberId===currentUser.id)&&(
+            <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#9b59b6",display:"inline-block"}}/> Mein Besuch</span>
+          )}
           {(()=>{
             const othersWithVac = members
               .filter(m => {
@@ -455,6 +470,17 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
                 <span style={{fontSize:12,color:"#c8913a",fontWeight:600}}>🧹 Dein Mistdienst</span>
               </div>
             )}
+            {selInfo.myRbVisits?.map((v,i)=>(
+              <div key={i} style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:"#f5f0fa",borderRadius:7,border:"1px solid #d5aff5"}}>
+                <span style={{fontSize:14}}>{v.isLesson?"🎓":"🐎"}</span>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:"#7d3c98"}}>
+                    {v.memberId===currentUser.id ? (v.isLesson?"Reitunterricht":"Mein Besuch") : `${v.memberName} – ${v.isLesson?"Reitunterricht":"Besuch"}`}
+                  </div>
+                  {v.note&&<div style={{fontSize:10,color:"#aaa"}}>{v.note}</div>}
+                </div>
+              </div>
+            ))}
             {selInfo.adminVacs?.map((v,i)=>(
               <div key={i} style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:v.mustCover?"#fdf0ee":"#f5f5f5",borderRadius:7,border:v.mustCover?"1px solid #f5c6c0":"1px solid #e8e8e8"}}>
                 <span style={{fontSize:12}}>{v.mustCover?"🔴":"🌴"}</span>
@@ -498,11 +524,13 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
   );
 }
 
-function CalendarScreen({ currentUser, isAdmin, members, events, vacations, einstellerList, showAddVacation, setShowAddVacation, newVac, setNewVac, vacTargetId, openAddVacation, addVacation, deleteVacation, updateVacation, deleteEvent, updateEvent, setShowAddEvent }) {
+function CalendarScreen({ currentUser, isAdmin, members, events, vacations, einstellerList, showAddVacation, setShowAddVacation, newVac, setNewVac, vacTargetId, openAddVacation, addVacation, deleteVacation, updateVacation, deleteEvent, updateEvent, setShowAddEvent, rbVisits, showAddVisit, setShowAddVisit, newVisit, setNewVisit, addRbVisit, deleteRbVisit, updateRbVisit }) {
   const [editVac, setEditVac] = useState(null);
   const [editForm, setEditForm] = useState({from:"",to:"",note:"",mustCover:false});
-  const [editEvt, setEditEvt] = useState(null); // event object being edited
+  const [editEvt, setEditEvt] = useState(null);
   const [editEvtForm, setEditEvtForm] = useState({type:"",date:"",time:"",note:""});
+  const [editVisit, setEditVisit] = useState(null);
+  const [editVisitForm, setEditVisitForm] = useState({date:"",note:"",isLesson:false});
 
   const openEditVac = (memberId, vac) => { setEditVac({memberId,vac}); setEditForm({from:vac.from,to:vac.to,note:vac.note,mustCover:vac.mustCover||false}); };
   const saveEditVac = async () => {
@@ -516,6 +544,22 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
     await updateEvent(editEvt.id, editEvtForm);
     setEditEvt(null);
   };
+  const openEditVisit = (v) => { setEditVisit(v); setEditVisitForm({date:v.date,note:v.note,isLesson:v.isLesson}); };
+  const saveEditVisit = async () => {
+    if(!editVisitForm.date) return;
+    await updateRbVisit(editVisit.id, editVisitForm);
+    setEditVisit(null);
+  };
+
+  // Which visits to show: RB sees own; Einsteller/Admin sees their RBs' visits
+  const visibleVisits = (rbVisits||[]).filter(v => {
+    if(v.memberId===currentUser.id) return true;
+    const rb = members.find(m=>m.id===v.memberId);
+    if(!rb) return false;
+    if(currentUser.type==="einsteller" && rb.einstellerId===currentUser.id) return true;
+    if(isAdmin && rb.einstellerId===currentUser.id) return true;
+    return false;
+  }).sort((a,b)=>a.date.localeCompare(b.date));
   const canAdd = isAdmin || currentUser.type==="einsteller";
   return (
     <div>
@@ -667,6 +711,90 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
           <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
             <button style={S.btn("light")} onClick={()=>setEditEvt(null)}>Abbrechen</button>
             <button style={S.btn("primary")} onClick={saveEditEvt}>💾 Speichern</button>
+          </div>
+        </div></div>
+      )}
+
+      {/* ── RB Besuche ── */}
+      {(currentUser.type==="reitbeteiligung"||(isAdmin&&members.some(m=>m.type==="reitbeteiligung"&&m.einstellerId===currentUser.id))||(currentUser.type==="einsteller"&&members.some(m=>m.type==="reitbeteiligung"&&m.einstellerId===currentUser.id)))&&(
+        <div style={S.card}>
+          <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+            <div style={S.cTitle}>🐎 Besuche am Pferd</div>
+            {currentUser.type==="reitbeteiligung"&&(
+              <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}} onClick={()=>{setNewVisit({date:"",note:"",isLesson:false});setShowAddVisit(true);}}>+ Eintragen</button>
+            )}
+          </div>
+          {visibleVisits.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Noch keine Besuche eingetragen</div>}
+          {visibleVisits.map(v=>{
+            const rb = members.find(m=>m.id===v.memberId);
+            const canAct = currentUser.id===v.memberId || isAdmin;
+            return (
+              <div key={v.id} style={{...S.row,alignItems:"flex-start",padding:"8px 0",borderBottom:"1px solid #f5f0e8"}}>
+                <div style={{width:4,alignSelf:"stretch",borderRadius:4,background:v.isLesson?"#8e44ad":"#9b59b6",flexShrink:0,marginRight:10}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{...S.row,justifyContent:"space-between"}}>
+                    <span style={{fontWeight:600,fontSize:13,color:"#2c2416"}}>{v.isLesson?"🎓 Reitunterricht":"🐎 Besuch"}</span>
+                    <span style={{fontSize:10,color:"#8b6040"}}>{new Date(v.date+"T00:00:00").toLocaleDateString("de-DE",{day:"2-digit",month:"short",year:"numeric"})}</span>
+                  </div>
+                  {(isAdmin||currentUser.type==="einsteller")&&rb&&<div style={{fontSize:10,color:"#8b6040",marginTop:1}}>👤 {rb.name.split(" ")[0]}</div>}
+                  {v.note&&<div style={{fontSize:11,color:"#666",marginTop:2}}>{v.note}</div>}
+                </div>
+                {canAct&&(
+                  <div style={{...S.row,gap:4,flexShrink:0,marginLeft:6}}>
+                    {/* Admin can toggle lesson flag */}
+                    {isAdmin&&<button onClick={async()=>{await updateRbVisit(v.id,{...v,isLesson:!v.isLesson});}} style={{background:v.isLesson?"#e8d5f5":"#f0e8d8",border:"none",cursor:"pointer",color:v.isLesson?"#8e44ad":"#8b6040",padding:"4px 8px",borderRadius:6,fontSize:11}} title={v.isLesson?"Als Besuch markieren":"Als Reitunterricht markieren"}>{v.isLesson?"🐎":"🎓"}</button>}
+                    <button onClick={()=>openEditVisit(v)} style={{background:"#f0e8d8",border:"none",cursor:"pointer",color:"#8b6040",padding:"4px 8px",borderRadius:6,fontSize:11}}>✏️</button>
+                    <button onClick={()=>deleteRbVisit(v.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add visit modal */}
+      {showAddVisit&&(
+        <div style={S.modal}><div style={S.mBox}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>🐎 Besuch eintragen</div>
+          <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>Wann kommst du zum Pferd?</div>
+          <label style={S.label}>Datum</label>
+          <input type="date" style={S.input} value={newVisit.date} onChange={e=>setNewVisit(p=>({...p,date:e.target.value}))}/>
+          <label style={S.label}>Notiz (optional)</label>
+          <input style={S.input} placeholder="z.B. Ausritt, Training..." value={newVisit.note} onChange={e=>setNewVisit(p=>({...p,note:e.target.value}))}/>
+          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:12}}>
+            <button style={S.btn("light")} onClick={()=>setShowAddVisit(false)}>Abbrechen</button>
+            <button style={S.btn("teal")} onClick={()=>addRbVisit(currentUser.id)}>Eintragen</button>
+          </div>
+        </div></div>
+      )}
+
+      {/* Edit visit modal */}
+      {editVisit&&(
+        <div style={S.modal}><div style={S.mBox}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:16,color:"#3d2b1f"}}>✏️ Besuch bearbeiten</div>
+          <label style={S.label}>Datum</label>
+          <input type="date" style={S.input} value={editVisitForm.date} onChange={e=>setEditVisitForm(p=>({...p,date:e.target.value}))}/>
+          <label style={S.label}>Notiz (optional)</label>
+          <input style={S.input} placeholder="z.B. Ausritt, Training..." value={editVisitForm.note} onChange={e=>setEditVisitForm(p=>({...p,note:e.target.value}))}/>
+          {isAdmin&&(
+            <div onClick={()=>setEditVisitForm(p=>({...p,isLesson:!p.isLesson}))}
+              style={{...S.row,alignItems:"center",gap:12,marginTop:8,marginBottom:4,padding:"12px 14px",
+                borderRadius:10,cursor:"pointer",border:`2px solid ${editVisitForm.isLesson?"#8e44ad":"#e2d5c0"}`,
+                background:editVisitForm.isLesson?"#f5eefa":"#faf6f0",transition:"all .2s"}}>
+              <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${editVisitForm.isLesson?"#8e44ad":"#ccc"}`,
+                background:editVisitForm.isLesson?"#8e44ad":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {editVisitForm.isLesson&&<span style={{color:"#fff",fontSize:14,fontWeight:700}}>✓</span>}
+              </div>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:editVisitForm.isLesson?"#8e44ad":"#3d2b1f"}}>🎓 Reitunterricht</div>
+                <div style={{fontSize:10,color:"#8b6040",marginTop:1}}>Als Reitunterricht markieren</div>
+              </div>
+            </div>
+          )}
+          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
+            <button style={S.btn("light")} onClick={()=>setEditVisit(null)}>Abbrechen</button>
+            <button style={S.btn("teal")} onClick={saveEditVisit}>💾 Speichern</button>
           </div>
         </div></div>
       )}
@@ -859,7 +987,7 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
 }
 
 function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einstellerList, weekDates, weekOffset, setWeekOffset, toggleMist, isMistLocked, saveMemberEdit, showToast }) {
-  const [adminView,   setAdminView]   = useState("week");
+  const [adminView,   setAdminView]   = useState("month");
   const [monthOffset, setMonthOffset] = useState(0);
 
   const viewDate  = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
@@ -1789,6 +1917,9 @@ export default function StallApp() {
   const [addExtra,       setAddExtra]       = useState(null);
   const [extraForm,      setExtraForm]      = useState({type:"Decken waschen",qty:"1",amount:"5",desc:""});
   const [selDay,         setSelDay]         = useState(null);
+  const [rbVisits,       setRbVisits]       = useState([]);
+  const [showAddVisit,   setShowAddVisit]   = useState(false);
+  const [newVisit,       setNewVisit]       = useState({date:"",time:"",note:"",isLesson:false});
 
   const weekDates = getWeekDates(weekOffset);
   const isAdmin   = currentUser?.type==="admin";
@@ -1826,6 +1957,9 @@ export default function StallApp() {
       const fmObj = {};
       (fmRows||[]).forEach(r=>{ fmObj[r.member_id+"_"+r.month]={id:r.id,extras:r.extras||[],payment:r.payment,carryover:r.carryover||0,notes:r.notes||""}; });
       setFinMonths(fmObj);
+
+      const { data: visitRows } = await sb.from("rb_visits").select("*").order("date");
+      setRbVisits((visitRows||[]).map(r=>({id:r.id, memberId:r.member_id, date:r.date, time:r.time||"", note:r.note||"", isLesson:r.is_lesson||false})));
     } catch(e) {
       showToast("⚠️ Verbindungsfehler – bitte neu laden","#c0392b");
     } finally {
@@ -1844,6 +1978,7 @@ export default function StallApp() {
       .on("postgres_changes",{event:"*",schema:"public",table:"vacations"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_accounts"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_months"},()=>loadAll())
+      .on("postgres_changes",{event:"*",schema:"public",table:"rb_visits"},()=>loadAll())
       .subscribe();
     return ()=>sb.removeChannel(channel);
   },[loadAll]);
@@ -1922,6 +2057,25 @@ export default function StallApp() {
     setEvents(p=>p.map(e=>e.id===id?{...e,...updates}:e));
     await sb.from("events").update(updates).eq("id",id);
     showToast("✅ Termin gespeichert!");
+  };
+
+  const addRbVisit = async (memberId) => {
+    if(!newVisit.date) return;
+    const row={id:Date.now(), member_id:memberId, date:newVisit.date, time:newVisit.time||null, note:newVisit.note||"", is_lesson:newVisit.isLesson||false};
+    setRbVisits(p=>[...p,{id:row.id,memberId,date:row.date,time:row.time||"",note:row.note,isLesson:row.is_lesson}]);
+    await sb.from("rb_visits").insert(row);
+    setNewVisit({date:"",time:"",note:"",isLesson:false}); setShowAddVisit(false);
+    showToast("✅ Besuch eingetragen!");
+  };
+  const deleteRbVisit = async (id) => {
+    setRbVisits(p=>p.filter(v=>v.id!==id));
+    await sb.from("rb_visits").delete().eq("id",id);
+  };
+  const updateRbVisit = async (id, data) => {
+    const row={date:data.date, time:data.time||null, note:data.note||"", is_lesson:data.isLesson||false};
+    setRbVisits(p=>p.map(v=>v.id===id?{...v,...data}:v));
+    await sb.from("rb_visits").update(row).eq("id",id);
+    showToast("✅ Besuch aktualisiert!");
   };
 
   const addMember = async () => {
@@ -2088,8 +2242,8 @@ export default function StallApp() {
       <div style={S.nav}>{tabs.map(t=><button key={t.id} style={S.navBtn(tab===t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>)}</div>
 
       <div style={{paddingBottom:16}}>
-        {tab==="home"     && <HomeScreen {...commonProps} events={events} mistData={mistData} finMonths={finMonths} finAccounts={finAccounts} selDay={selDay} setSelDay={setSelDay} upcomingEvents={upcomingEvents} unpaid={unpaid} mistWarnings={mistWarnings} getVacationLabel={getVacationLabel} {...finHelpers}/>}
-        {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} updateVacation={updateVacation} deleteEvent={deleteEvent} updateEvent={updateEvent} setShowAddEvent={setShowAddEvent}/>}
+        {tab==="home"     && <HomeScreen {...commonProps} events={events} mistData={mistData} finMonths={finMonths} finAccounts={finAccounts} selDay={selDay} setSelDay={setSelDay} upcomingEvents={upcomingEvents} unpaid={unpaid} mistWarnings={mistWarnings} getVacationLabel={getVacationLabel} rbVisits={rbVisits} {...finHelpers}/>}
+        {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} updateVacation={updateVacation} deleteEvent={deleteEvent} updateEvent={updateEvent} setShowAddEvent={setShowAddEvent} rbVisits={rbVisits} showAddVisit={showAddVisit} setShowAddVisit={setShowAddVisit} newVisit={newVisit} setNewVisit={setNewVisit} addRbVisit={addRbVisit} deleteRbVisit={deleteRbVisit} updateRbVisit={updateRbVisit}/>}
         {tab==="mist"     && <MistScreen {...commonProps} mistData={mistData} weekDates={weekDates} weekOffset={weekOffset} setWeekOffset={setWeekOffset} toggleMist={toggleMist} isMistLocked={isMistLocked} saveMemberEdit={saveMemberEdit} showToast={showToast}/>}
         {tab==="members"  && <MembersScreen {...commonProps} showAddMember={showAddMember} setShowAddMember={setShowAddMember} newMember={newMember} setNewMember={setNewMember} addMember={addMember} deleteMember={deleteMember} saveMemberEdit={saveMemberEdit} getVacationLabel={getVacationLabel} editId={editId} setEditId={setEditId} editData={editData} setEditData={setEditData} pinMode={pinMode} setPinMode={setPinMode} pins={pins} setPins={setPins} pinErr={pinErr} setPinErr={setPinErr}/>}
         {tab==="finanzen" && <FinanzenScreen {...commonProps} finMonths={finMonths} finAccounts={finAccounts} finViewMonth={finViewMonth} finViewYear={finViewYear} setFinViewMonth={setFinViewMonth} setFinViewYear={setFinViewYear} editFee={editFee} setEditFee={setEditFee} editPay={editPay} setEditPay={setEditPay} addExtra={addExtra} setAddExtra={setAddExtra} extraForm={extraForm} setExtraForm={setExtraForm} {...finHelpers}/>}
