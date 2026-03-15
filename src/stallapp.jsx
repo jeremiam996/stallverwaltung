@@ -702,10 +702,6 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
   const minVal = 0;
   const step   = mode==="percent" ? 10 : 1;
 
-  const maxVal = mode==="percent" ? 100 : totalMonthly;
-  const minVal = 0;
-  const step   = mode==="percent" ? 10 : 1;
-
   return (
     <>
       <div style={{marginTop:14,borderTop:"1px solid #f0e8d8",paddingTop:12}}>
