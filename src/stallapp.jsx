@@ -718,11 +718,22 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
       {/* ── RB Besuche ── */}
       {(currentUser.type==="reitbeteiligung"||(isAdmin&&members.some(m=>m.type==="reitbeteiligung"&&m.einstellerId===currentUser.id))||(currentUser.type==="einsteller"&&members.some(m=>m.type==="reitbeteiligung"&&m.einstellerId===currentUser.id)))&&(
         <div style={S.card}>
-          <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+          <div style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={S.cTitle}>🐎 Besuche am Pferd</div>
-            {currentUser.type==="reitbeteiligung"&&(
-              <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}} onClick={()=>{setNewVisit({date:"",note:"",isLesson:false});setShowAddVisit(true);}}>+ Eintragen</button>
-            )}
+            <div style={{...S.row,gap:6}}>
+              {isAdmin&&(
+                <button style={{...S.btn("primary"),padding:"7px 12px",fontSize:11}}
+                  onClick={()=>{
+                    const myRbs=members.filter(m=>m.type==="reitbeteiligung"&&m.einstellerId===currentUser.id);
+                    setNewVisit({date:"",note:"",isLesson:true,targetId:myRbs[0]?.id||null});
+                    setShowAddVisit(true);
+                  }}>🎓 Reitunterricht</button>
+              )}
+              {currentUser.type==="reitbeteiligung"&&(
+                <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}}
+                  onClick={()=>{setNewVisit({date:"",note:"",isLesson:false,targetId:currentUser.id});setShowAddVisit(true);}}>+ Besuch</button>
+              )}
+            </div>
           </div>
           {visibleVisits.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Noch keine Besuche eingetragen</div>}
           {visibleVisits.map(v=>{
@@ -756,15 +767,33 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
       {/* Add visit modal */}
       {showAddVisit&&(
         <div style={S.modal}><div style={S.mBox}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>🐎 Besuch eintragen</div>
-          <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>Wann kommst du zum Pferd?</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>
+            {newVisit.isLesson?"🎓 Reitunterricht eintragen":"🐎 Besuch eintragen"}
+          </div>
+          <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>
+            {newVisit.isLesson?"Reitunterricht für deine Reitbeteiligung":"Wann kommst du zum Pferd?"}
+          </div>
+          {/* RB selector for admin */}
+          {isAdmin&&(()=>{
+            const myRbs=members.filter(m=>m.type==="reitbeteiligung"&&m.einstellerId===currentUser.id);
+            if(myRbs.length<=1) return null;
+            return (<>
+              <label style={S.label}>Reitbeteiligung</label>
+              <select style={S.input} value={newVisit.targetId||""} onChange={e=>setNewVisit(p=>({...p,targetId:parseInt(e.target.value)}))}>
+                {myRbs.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </>);
+          })()}
           <label style={S.label}>Datum</label>
           <input type="date" style={S.input} value={newVisit.date} onChange={e=>setNewVisit(p=>({...p,date:e.target.value}))}/>
           <label style={S.label}>Notiz (optional)</label>
-          <input style={S.input} placeholder="z.B. Ausritt, Training..." value={newVisit.note} onChange={e=>setNewVisit(p=>({...p,note:e.target.value}))}/>
+          <input style={S.input} placeholder={newVisit.isLesson?"z.B. Dressur, Springen...":"z.B. Ausritt, Training..."} value={newVisit.note} onChange={e=>setNewVisit(p=>({...p,note:e.target.value}))}/>
           <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:12}}>
             <button style={S.btn("light")} onClick={()=>setShowAddVisit(false)}>Abbrechen</button>
-            <button style={S.btn("teal")} onClick={()=>addRbVisit(currentUser.id)}>Eintragen</button>
+            <button style={S.btn(newVisit.isLesson?"primary":"teal")} onClick={()=>{
+              const targetId = isAdmin ? (newVisit.targetId||members.find(m=>m.type==="reitbeteiligung"&&m.einstellerId===currentUser.id)?.id) : currentUser.id;
+              if(targetId) addRbVisit(targetId);
+            }}>Eintragen</button>
           </div>
         </div></div>
       )}
