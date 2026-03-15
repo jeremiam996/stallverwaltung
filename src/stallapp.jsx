@@ -81,7 +81,7 @@ const getBaseGroupQuota = (einsteller, allMembers, year, month) => {
 const getRbWeekQuota = (root, allMembers, year, month) => {
   const beteiligungen = allMembers.filter(m=>m.einstellerId===root.id);
   if(beteiligungen.length===0) return 0;
-  const mode = root.mistMode||"percent";
+  const mode = root.type==="admin" ? "fixed_rb" : (root.mistMode||"percent");
   const weeks = year!==undefined ? getWeeksInMonth(year,month).length : 4;
   if(mode==="percent") {
     const rootShare = (root.mistShare??50) / 100;
@@ -95,7 +95,8 @@ const getRbWeekQuota = (root, allMembers, year, month) => {
     return Math.max(0, Math.round(rbTotal / beteiligungen.length / weeks));
   }
   if(mode==="fixed_rb") {
-    const rbMonthly = root.mistShare??2;
+    // For admin: mistShare is direct monthly count per RB, convert to per-week
+    const rbMonthly = root.type==="admin" ? (root.mistShare??2) : (root.mistShare??2);
     return Math.max(0, Math.round(rbMonthly / weeks));
   }
   return 1;
@@ -297,6 +298,29 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
               </div>
             );
           })}
+          {(()=>{
+            const adminRbs = members.filter(m=>m.type==="reitbeteiligung"&&members.some(a=>a.type==="admin"&&a.id===m.einstellerId));
+            if(adminRbs.length===0) return null;
+            return (<>
+              <div style={{fontSize:10,color:"#8b6040",fontWeight:700,marginTop:8,marginBottom:2}}>🤝 Reitbet. von {members.find(a=>a.type==="admin")?.name.split(" ")[0]}</div>
+              {adminRbs.map(m=>{
+                const fm=getFinMonth(m.id,viewYear,viewMonth);
+                const total=calcTotal(m.id,viewYear,viewMonth);
+                const paid=fm.payment!==null&&fm.payment!==undefined;
+                return (
+                  <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"7px 0",paddingLeft:10,borderBottom:"1px solid #f0e8d8"}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:500}}>{m.name}</div>
+                      <div style={{fontSize:10,color:"#8b6040"}}>🤝{m.horse?` ${m.horse}`:""} · {total.toFixed(2)}€</div>
+                    </div>
+                    {paid
+                      ? <span style={{background:"#e8f0e8",color:"#555",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>✓ {Number(fm.payment).toFixed(2)}€</span>
+                      : <span style={{background:"#fdecea",color:"#c0392b",fontWeight:700,fontSize:11,padding:"4px 10px",borderRadius:20}}>⚠️ Offen</span>}
+                  </div>
+                );
+              })}
+            </>);
+          })()}
         </div>
       )}
       {isE&&(
@@ -628,10 +652,10 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
 function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, saveMemberEdit, showToast }) {
   const isAdminUser  = currentUser.type==="admin";
   const [open, setOpen]   = useState(false);
-  // Admin only uses fixed_rb mode (how many duties per RB per month)
   const initMode = isAdminUser ? "fixed_rb" : (currentUser.mistMode||"percent");
+  const initVal  = isAdminUser ? (currentUser.mistShare??2) : (currentUser.mistShare??50);
   const [mode, setMode]   = useState(initMode);
-  const [value, setValue] = useState(currentUser.mistShare??50);
+  const [value, setValue] = useState(initVal);
 
   const weeks        = getWeeksInMonth(viewYear, viewMonth);
   const totalMonthly = weeks.length * 2;
@@ -641,7 +665,8 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
   useEffect(() => {
     const m = isAdminUser ? "fixed_rb" : (currentUser.mistMode||"percent");
     setMode(m);
-    setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : currentUser.mistShare??50);
+    if(isAdminUser) setValue(currentUser.mistShare??2);
+    else setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : currentUser.mistShare??50);
   }, [currentUser.mistMode, currentUser.mistShare]);
 
   const getDisplayCounts = (m, v) => {
@@ -657,9 +682,11 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
   const handleOpen = () => {
     const m = isAdminUser ? "fixed_rb" : (currentUser.mistMode||"percent");
     setMode(m);
-    setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : currentUser.mistShare??50);
+    if(isAdminUser) setValue(currentUser.mistShare??2);
+    else setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : currentUser.mistShare??50);
     setOpen(true);
   };
+
   const handleSave = async () => {
     await saveMemberEdit(currentUser.id, {...currentUser, mistShare: value, mistMode: mode, einstellerId: currentUser.einstellerId||""});
     setOpen(false);
@@ -670,6 +697,10 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
     { key:"fixed_e",  label:"Meine Dienste",   icon:"🐴" },
     { key:"fixed_rb", label:"Reitbet. Dienste",icon:"🤝" },
   ];
+
+  const maxVal = isAdminUser ? 10 : (mode==="percent" ? 100 : totalMonthly);
+  const minVal = 0;
+  const step   = mode==="percent" ? 10 : 1;
 
   const maxVal = mode==="percent" ? 100 : totalMonthly;
   const minVal = 0;
@@ -1564,102 +1595,129 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
           </div>
         );
       })}
-      {adminRbsAll.length>0&&(
-        <div style={{...S.card,borderTop:"3px solid #c8913a"}}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#3d2b1f",marginBottom:12}}>👑 Reitbeteiligungen des Admins</div>
-          {adminRbsAll.map(m=>{
-            const fm=getFinMonth(m.id,viewYear,viewMonth); const base=getBaseFee(m.id);
-            const extras=fm.extras||[]; const carry=calcCarryover(m.id,viewYear,viewMonth);
-            const total=calcTotal(m.id,viewYear,viewMonth); const paid=fm.payment!==null&&fm.payment!==undefined;
-            const diff=paid?Number((fm.payment-total).toFixed(2)):null;
-            const editingFee=editFee[m.id]!==undefined; const editingPay=editPay[m.id]!==undefined;
-            return (
-              <div key={m.id} style={{marginBottom:16,paddingBottom:16,borderBottom:"1px solid #f0e8d8"}}>
-                <div style={{...S.row,justifyContent:"space-between",marginBottom:8}}>
+      {adminRbsAll.length>0&&(<>
+        <div style={{...S.card,background:"#faf6f0",border:"1.5px solid #e2d5c0"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:13,color:"#8b6040"}}>
+            🤝 Reitbeteiligung von {members.find(m=>m.type==="admin")?.name||"Admin"}
+          </div>
+        </div>
+        {adminRbsAll.map(m=>{
+          const fm=getFinMonth(m.id,viewYear,viewMonth); const base=getBaseFee(m.id);
+          const extras=fm.extras||[]; const carry=calcCarryover(m.id,viewYear,viewMonth);
+          const total=calcTotal(m.id,viewYear,viewMonth); const paid=fm.payment!==null&&fm.payment!==undefined;
+          const diff=paid?Number((fm.payment-total).toFixed(2)):null;
+          const editingFee=editFee[m.id]!==undefined; const editingPay=editPay[m.id]!==undefined;
+          return (
+            <div key={m.id} style={S.card}>
+              <div style={{...S.row,justifyContent:"space-between",marginBottom:12}}>
+                <div style={{...S.row,gap:10}}>
+                  <div style={S.ava()}>{m.name.charAt(0)}</div>
                   <div>
-                    <div style={{fontWeight:700,fontSize:14}}>{m.name}</div>
+                    <div style={{fontWeight:600,fontSize:13}}>{m.name}</div>
                     <div style={{fontSize:11,color:"#8b6040"}}>🤝 Reitbeteiligung{m.horse?` · ${m.horse}`:""}</div>
                   </div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontSize:20,fontWeight:700,color:"#3d2b1f"}}>{total.toFixed(2)}€</div>
-                    <div style={{fontSize:10,color:paid?"#27ae60":"#c0392b",fontWeight:600}}>{paid?"✓ Bezahlt":"⏳ Offen"}</div>
-                  </div>
                 </div>
-                {/* Grundgebühr */}
-                <div style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
-                  <span style={{fontSize:12,color:"#8b6040"}}>Grundgebühr</span>
-                  {editingFee
-                    ? <div style={{...S.row,gap:6}}><input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="5" value={editFee[m.id]} onChange={e=>setEditFee(p=>({...p,[m.id]:e.target.value}))}/><button style={S.btn("primary")} onClick={()=>handleSaveFee(m.id)}>✓</button><button style={S.btn("light")} onClick={()=>setEditFee(p=>({...p,[m.id]:undefined}))}>✗</button></div>
-                    : <div style={{...S.row,gap:8}}><span style={{fontSize:12,fontWeight:600}}>{base.toFixed(2)}€</span><button onClick={()=>setEditFee(p=>({...p,[m.id]:String(base)}))} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#c8913a"}}>✏️</button></div>}
-                </div>
-                {/* Extras */}
-                {extras.map(ex=>(
-                  <div key={ex.id} style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
-                    <span style={{fontSize:12,color:"#8b6040"}}>{ex.type}{ex.desc?` · ${ex.desc}`:""}{ex.qty?` (${ex.qty}×)`:""}</span>
-                    <div style={{...S.row,gap:8}}><span style={{fontSize:12,fontWeight:600}}>{Number(ex.amount).toFixed(2)}€</span><button onClick={()=>handleRemoveExtra(m.id,ex.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#ccc"}}>✗</button></div>
-                  </div>
-                ))}
-                {carry!==0&&(
-                  <div style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
-                    <span style={{fontSize:12,color:"#8b6040"}}>Übertrag Vormonat</span>
-                    <span style={{fontSize:12,fontWeight:600,color:carry>0?"#c0392b":"#27ae60"}}>{carry>0?"+":"-"}{Math.abs(carry).toFixed(2)}€</span>
-                  </div>
-                )}
-                <div style={{...S.row,justifyContent:"space-between",padding:"8px 0",fontWeight:700}}>
-                  <span>Gesamt</span><span style={{color:"#3d2b1f"}}>{total.toFixed(2)}€</span>
-                </div>
-                {/* Extras hinzufügen */}
-                <button onClick={()=>{setAddExtra(m.id);resetExtraForm();}} style={{...S.btn("light"),fontSize:11,padding:"5px 12px",marginBottom:10}}>+ Extra hinzufügen</button>
-                {addExtra===m.id&&(
-                  <div style={S.modal}><div style={S.mBox}>
-                    <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,marginBottom:12,color:"#3d2b1f"}}>Extra buchen · {m.name.split(" ")[0]}</div>
-                    <label style={S.label}>Typ</label>
-                    <select style={S.input} value={extraForm.type} onChange={e=>onExtraTypeChange(e.target.value)}>
-                      {EXTRA_TYPES.map(t=><option key={t.label}>{t.label}</option>)}
-                    </select>
-                    {getExtraConfig(extraForm.type).hasQty&&(<>
-                      <label style={S.label}>Anzahl</label>
-                      <input style={S.input} type="number" min="1" value={extraForm.qty} onChange={e=>setExtraForm(p=>({...p,qty:e.target.value,amount:String(getExtraConfig(extraForm.type).unitPrice*(parseInt(e.target.value)||1))}))}/>
-                      <div style={{fontSize:11,color:"#c8913a",marginBottom:8}}>{(getExtraConfig(extraForm.type).unitPrice*(parseInt(extraForm.qty)||1)).toFixed(2)}€</div>
-                    </>)}
-                    {!getExtraConfig(extraForm.type).hasQty&&extraForm.type!=="Vollpension"&&(<>
-                      <label style={S.label}>Betrag (€)</label>
-                      <input style={S.input} type="number" step="0.50" min="0" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
-                      <label style={S.label}>Beschreibung (optional)</label>
-                      <input style={S.input} placeholder="z.B. 3 Einheiten" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
-                    </>)}
-                    {extraForm.type==="Vollpension"&&<div style={{textAlign:"center",fontSize:13,color:"#c8913a",fontWeight:700,marginBottom:12}}>65.00€ / Monat</div>}
-                    <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
-                      <button style={S.btn("light")} onClick={()=>setAddExtra(null)}>Abbrechen</button>
-                      <button style={S.btn("primary")} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
-                    </div>
-                  </div></div>
-                )}
-                {/* Zahlung */}
-                <div style={{padding:"10px 0",borderTop:"1px solid #f0e8d8"}}>
-                  <div style={{...S.row,justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{fontSize:12,fontWeight:600}}>Zahlung</span>
-                    <div style={{...S.row,gap:8,alignItems:"center"}}>
-                      {editingPay
-                        ? <div style={{...S.row,gap:6}}><input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.01" value={editPay[m.id]} onChange={e=>setEditPay(p=>({...p,[m.id]:e.target.value}))}/><button style={S.btn("primary")} onClick={()=>handleSavePayment(m.id)}>✓</button><button style={S.btn("light")} onClick={()=>setEditPay(p=>({...p,[m.id]:undefined}))}>✗</button></div>
-                        : <>
-                          <div onClick={async()=>{ if(paid){await saveFinMonth(m.id,viewYear,viewMonth,{payment:null});}else{await handleSavePayment(m.id,total);}}} style={{width:28,height:28,borderRadius:8,border:`2px solid ${paid?"#27ae60":"#e2d5c0"}`,background:paid?"#27ae60":"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
-                            {paid&&<span style={{color:"#fff",fontWeight:700,fontSize:14}}>✓</span>}
-                          </div>
-                          <span style={{fontSize:12,color:paid?"#27ae60":"#aaa"}}>{paid?`${Number(fm.payment).toFixed(2)}€ bezahlt`:"Noch nicht bezahlt"}</span>
-                          {!editingPay&&<button onClick={()=>setEditPay(p=>({...p,[m.id]:paid?String(fm.payment):String(total)}))} style={{...S.btn("light"),padding:"4px 12px",fontSize:11}}>✏️ Betrag anpassen</button>}
-                        </>}
-                    </div>
-                  </div>
-                  {paid&&diff!==0&&<div style={{fontSize:11,color:diff>0?"#27ae60":"#c0392b",marginTop:4}}>
-                    {diff>0?`Überzahlung: +${diff.toFixed(2)}€ → nächsten Monat gutgeschrieben`:`Unterzahlung: ${diff.toFixed(2)}€ → nächsten Monat aufgeschlagen`}
-                  </div>}
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontWeight:700,fontSize:18,color:"#3d2b1f"}}>{total.toFixed(2)}€</div>
+                  <div style={{fontSize:10,color:paid?"#555":"#c0392b",fontWeight:600}}>{paid?`✓ ${Number(fm.payment).toFixed(2)}€ erhalten`:"⚠️ Offen"}</div>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+              <div style={{...S.row,justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f0e8d8"}}>
+                <div style={{fontSize:12,color:"#8b6040"}}>Grundgebühr</div>
+                {editingFee
+                  ? <div style={{...S.row,gap:6}}>
+                      <input style={{...S.input,width:80,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.50" value={editFee[m.id]} onChange={e=>setEditFee(p=>({...p,[m.id]:e.target.value}))}/>
+                      <button style={{...S.btn("primary"),padding:"4px 10px",fontSize:11}} onClick={()=>handleSaveFee(m.id)}>OK</button>
+                      <button style={{...S.btn("light"),padding:"4px 8px",fontSize:11}} onClick={()=>setEditFee(p=>({...p,[m.id]:undefined}))}>✕</button>
+                    </div>
+                  : <div style={{...S.row,gap:8}}>
+                      <span style={{fontWeight:600,fontSize:13}}>{base.toFixed(2)}€</span>
+                      <button onClick={()=>setEditFee(p=>({...p,[m.id]:String(base)}))} style={{background:"#f5f0e8",border:"none",cursor:"pointer",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#8b6040"}}>✏️</button>
+                    </div>}
+              </div>
+              <div style={{...S.row,justifyContent:"space-between",padding:"4px 0 4px",borderBottom:"1px solid #f5f0e8"}}>
+                <div style={{fontSize:11,color:"#8b6040",fontWeight:600}}>Zusätze</div>
+                <button style={{...S.btn("primary"),padding:"3px 10px",fontSize:11}} onClick={()=>{setAddExtra(m.id);resetExtraForm();}}>+ Hinzufügen</button>
+              </div>
+              {extras.map(e=>(
+                <div key={e.id} style={{...S.row,justifyContent:"space-between",padding:"5px 0 5px 10px",borderBottom:"1px solid #f5f0e8"}}>
+                  <div style={{fontSize:11,color:"#8b6040"}}>+ {e.type}{e.desc?` · ${e.desc}`:""}</div>
+                  <div style={{...S.row,gap:6}}>
+                    <span style={{fontSize:12,fontWeight:600,color:"#c8913a"}}>{Number(e.amount).toFixed(2)}€</span>
+                    <button onClick={()=>handleRemoveExtra(m.id,e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ddd",padding:2}}><Ic n="x" s={12}/></button>
+                  </div>
+                </div>
+              ))}
+              {addExtra===m.id&&(
+                <div style={{background:"#faf6f0",borderRadius:8,padding:10,border:"1px solid #c8913a",margin:"6px 0"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#c8913a",marginBottom:8}}>Zusatzdienst hinzufügen</div>
+                  <select style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} value={extraForm.type} onChange={e=>onExtraTypeChange(e.target.value)}>
+                    {EXTRA_TYPES.map(t=><option key={t.label}>{t.label}</option>)}
+                  </select>
+                  {getExtraConfig(extraForm.type).hasQty&&(
+                    <div style={{...S.row,gap:6,marginBottom:6}}>
+                      <button onClick={()=>setExtraForm(p=>({...p,qty:String(Math.max(1,(parseInt(p.qty)||1)-1))}))} style={{...S.btn("light"),padding:"4px 12px",fontSize:14}}>−</button>
+                      <input style={{...S.input,marginBottom:0,textAlign:"center",fontWeight:700}} type="number" min="1" value={extraForm.qty} onChange={e=>setExtraForm(p=>({...p,qty:e.target.value}))}/>
+                      <button onClick={()=>setExtraForm(p=>({...p,qty:String((parseInt(p.qty)||1)+1)}))} style={{...S.btn("light"),padding:"4px 12px",fontSize:14}}>+</button>
+                    </div>
+                  )}
+                  {getExtraConfig(extraForm.type).hasQty&&<div style={{fontSize:12,color:"#c8913a",fontWeight:700,marginBottom:6,textAlign:"center"}}>{calcExtraAmount(extraForm).toFixed(2)}€</div>}
+                  {!getExtraConfig(extraForm.type).hasQty&&extraForm.type!=="Vollpension"&&<>
+                    <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} type="number" step="0.50" min="0" placeholder="Betrag (€)" value={extraForm.amount} onChange={e=>setExtraForm(p=>({...p,amount:e.target.value}))}/>
+                    <input style={{...S.input,marginBottom:6,padding:"6px 8px",fontSize:12}} placeholder="Beschreibung (optional)" value={extraForm.desc} onChange={e=>setExtraForm(p=>({...p,desc:e.target.value}))}/>
+                  </>}
+                  {extraForm.type==="Vollpension"&&<div style={{fontSize:12,color:"#c8913a",fontWeight:700,marginBottom:6}}>65.00€ / Monat</div>}
+                  <div style={{...S.row,justifyContent:"flex-end",gap:6}}>
+                    <button style={{...S.btn("light"),padding:"5px 10px",fontSize:11}} onClick={()=>setAddExtra(null)}>Abbrechen</button>
+                    <button style={{...S.btn("primary"),padding:"5px 10px",fontSize:11}} onClick={()=>handleAddExtra(m.id)}>Buchen</button>
+                  </div>
+                </div>
+              )}
+              {carry!==0&&(
+                <div style={{...S.row,justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
+                  <div style={{fontSize:11,color:"#8b6040"}}>Übertrag Vormonat</div>
+                  <span style={{fontSize:12,fontWeight:600,color:carry>0?"#c0392b":"#27ae60"}}>{carry<0?"+":"-"}{Math.abs(carry).toFixed(2)}€</span>
+                </div>
+              )}
+              <div style={{...S.row,justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #e2d5c0"}}>
+                <div style={{fontWeight:700,fontSize:13}}>Gesamt fällig</div>
+                <div style={{fontWeight:700,fontSize:15}}>{total.toFixed(2)}€</div>
+              </div>
+              <div style={{padding:"10px 0 0"}}>
+                <div style={{...S.row,justifyContent:"space-between",marginBottom:6}}>
+                  <div style={{fontSize:12,color:"#8b6040",fontWeight:600}}>Zahlung</div>
+                  <label style={{...S.row,gap:8,cursor:"pointer"}}>
+                    <span style={{fontSize:12,color:paid?"#27ae60":"#c0392b",fontWeight:600}}>{paid?"✓ Bezahlt":"⏳ Ausstehend"}</span>
+                    <div onClick={async()=>{
+                      if(!paid){ await handleSavePayment(m.id, total); }
+                      else { await saveFinMonth(m.id,viewYear,viewMonth,{payment:null}); let nm=viewMonth+1,ny=viewYear; if(nm>11){nm=0;ny++;} await saveFinMonth(m.id,ny,nm,{carryover:0}); }
+                    }} style={{width:42,height:24,borderRadius:12,background:paid?"#27ae60":"#ddd",position:"relative",cursor:"pointer",transition:"background .2s",flexShrink:0}}>
+                      <div style={{position:"absolute",top:3,left:paid?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 4px rgba(0,0,0,.2)",transition:"left .2s"}}/>
+                    </div>
+                  </label>
+                </div>
+                {paid&&<div style={{fontSize:12,color:"#555",marginBottom:4}}>Betrag: <b>{Number(fm.payment).toFixed(2)}€</b>
+                  {diff!==0&&<span style={{fontSize:11,color:diff<0?"#c0392b":"#27ae60",marginLeft:8}}>→ Nächster Monat: {diff<0?"+":""}{(-diff).toFixed(2)}€</span>}
+                </div>}
+                <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>Abweichender Betrag?</div>
+                {editingPay
+                  ? <div style={{...S.row,gap:6}}>
+                      <input style={{...S.input,width:90,marginBottom:0,padding:"4px 8px",fontSize:12}} type="number" step="0.50" value={editPay[m.id]} onChange={e=>setEditPay(p=>({...p,[m.id]:e.target.value}))} placeholder={total.toFixed(2)} autoFocus/>
+                      <button style={{...S.btn("primary"),padding:"4px 10px",fontSize:11}} onClick={()=>handleSavePayment(m.id)}>OK</button>
+                      <button style={{...S.btn("light"),padding:"4px 8px",fontSize:11}} onClick={()=>setEditPay(p=>({...p,[m.id]:undefined}))}>✕</button>
+                    </div>
+                  : <button onClick={()=>setEditPay(p=>({...p,[m.id]:paid?String(fm.payment):String(total)}))} style={{...S.btn("light"),padding:"4px 12px",fontSize:11}}>✏️ Betrag anpassen</button>}
+              </div>
+              {!paid&&m.phone&&(
+                <a href={`https://wa.me/${m.phone.replace(/[^0-9]/g,"")}?text=Hallo%20${encodeURIComponent(m.name.split(" ")[0])}%2C%20deine%20Stallgeb%C3%BChr%20f%C3%BCr%20${encodeURIComponent(monthLabel)}%20betr%C3%A4gt%20${total.toFixed(2).replace(".",",")}%E2%82%AC.%20Bitte%20%C3%BCberweise%20zeitnah!%20%F0%9F%90%B4`}
+                  style={{...S.btn("primary"),textDecoration:"none",padding:"6px 14px",fontSize:11,display:"inline-block",marginTop:10}}>
+                  📲 WhatsApp Erinnerung
+                </a>
+              )}
+            </div>
+          );
+        })}
+      </>)}
     </div>
   );
 }
