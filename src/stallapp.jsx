@@ -95,18 +95,35 @@ const getRbWeekQuota = (root, allMembers, year, month) => {
     return Math.max(0, Math.round(rbTotal / beteiligungen.length / weeks));
   }
   if(mode==="fixed_rb") {
-    // For admin: mistShare is direct monthly count per RB, convert to per-week
-    const rbMonthly = root.type==="admin" ? (root.mistShare??2) : (root.mistShare??2);
-    return Math.max(0, Math.round(rbMonthly / weeks));
+    // Return monthly value divided by weeks for week-view display
+    const rbMonthly = root.mistShare??2;
+    return rbMonthly / weeks; // keep as float so getMonthlyQuota sums correctly
   }
   return 1;
+};
+const getRbMonthlyQuota = (root, allMembers, vacations, year, month) => {
+  // For fixed_rb admin mode: return direct monthly value (not week-multiplied)
+  const mode = root.type==="admin" ? "fixed_rb" : (root.mistMode||"percent");
+  if(mode==="fixed_rb") {
+    // Check if any week is vacation (reduce proportionally)
+    const weeks = getWeeksInMonth(year, month);
+    const vacWeeks = weeks.filter(monKey => {
+      const weekEnd = new Date(monKey); weekEnd.setDate(new Date(monKey).getDate()+6);
+      return (vacations[root.id]||[]).some(v=>v.from<=dk(weekEnd)&&v.to>=monKey);
+    }).length;
+    const rbMonthly = root.mistShare??2;
+    if(vacWeeks===0) return rbMonthly;
+    // Pro-rate for vacation weeks
+    return Math.round(rbMonthly * (weeks.length - vacWeeks) / weeks.length);
+  }
+  // For other modes, sum week quotas as before (but we need member not root here)
+  return null; // signals to use normal path
 };
 const getMemberWeekQuota = (member, weekMon, allMembers, vacations) => {
   const weekEnd = new Date(weekMon); weekEnd.setDate(new Date(weekMon).getDate() + 6);
   const weekEndKey = dk(weekEnd);
   const isOnVacation = (vacations[member.id]||[]).some(v=>v.from<=weekEndKey && v.to>=weekMon);
   if(isOnVacation) return 0;
-  // Determine year/month from weekMon for correct week count
   const wDate = new Date(weekMon); const yr = wDate.getFullYear(); const mo = wDate.getMonth();
   if(member.type==="reitbeteiligung") {
     const root = allMembers.find(m=>m.id===member.einstellerId);
@@ -114,6 +131,20 @@ const getMemberWeekQuota = (member, weekMon, allMembers, vacations) => {
     return getRbWeekQuota(root, allMembers, yr, mo);
   }
   return getBaseGroupQuota(member, allMembers, yr, mo);
+};
+const getMonthlyQuota = (member, allMembers, vacations, year, month) => {
+  // Special case: RB of admin with fixed_rb mode → use direct monthly value
+  if(member.type==="reitbeteiligung") {
+    const root = allMembers.find(m=>m.id===member.einstellerId);
+    if(root) {
+      const monthly = getRbMonthlyQuota(root, allMembers, vacations, year, month);
+      if(monthly !== null) return monthly;
+    }
+  }
+  // Default: sum weekly quotas
+  let total = 0;
+  getWeeksInMonth(year, month).forEach(monKey => { total += getMemberWeekQuota(member, monKey, allMembers, vacations); });
+  return Math.round(total);
 };
 const countMistMonth = (mistData, memberId, year, month) => {
   let count = 0;
@@ -124,11 +155,6 @@ const countMistMonth = (mistData, memberId, year, month) => {
     }
   });
   return count;
-};
-const getMonthlyQuota = (member, allMembers, vacations, year, month) => {
-  let total = 0;
-  getWeeksInMonth(year, month).forEach(monKey => { total += getMemberWeekQuota(member, monKey, allMembers, vacations); });
-  return total;
 };
 const isOnVacationDay = (memberId, dayKey, vacations) =>
   (vacations[memberId]||[]).some(v=>v.from<=dayKey&&v.to>=dayKey);
@@ -1028,6 +1054,12 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               <span style={{color:"#c0392b"}}>✗ = Tag vergeben</span>
               <span style={{color:"#c8913a",fontWeight:600}}>Mo = Monatssoll</span>
             </div>
+            {(()=>{
+              const adminRbs = members.filter(rb=>rb.type==="reitbeteiligung"&&rb.einstellerId===currentUser.id);
+              if(adminRbs.length===0) return null;
+              const wy = weekDates[0].getFullYear(); const wm = weekDates[0].getMonth();
+              return <MistSplitWidget currentUser={currentUser} rbs={adminRbs} members={members} vacations={vacations} viewYear={wy} viewMonth={wm} saveMemberEdit={saveMemberEdit} showToast={showToast}/>;
+            })()}
           </>)}
 
           {adminView==="month"&&(<>
