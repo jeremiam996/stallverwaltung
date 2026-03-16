@@ -2078,10 +2078,10 @@ export default function StallApp() {
       (fmRows||[]).forEach(r=>{ fmObj[r.member_id+"_"+r.month]={id:r.id,extras:r.extras||[],payment:r.payment,carryover:r.carryover||0,notes:r.notes||""}; });
       setFinMonths(fmObj);
 
-      const { data: visitRows } = await sb.from("rb_visits").select("*").order("date");
+      const { data: visitRows } = await sb.from("rb_visits").select("*").order("date").catch(()=>({data:[]}));
       setRbVisits((visitRows||[]).map(r=>({id:r.id, memberId:r.member_id, date:r.date, time:r.time||"", note:r.note||"", isLesson:r.is_lesson||false})));
 
-      const { data: blockedRows } = await sb.from("rb_blocked_days").select("*").order("date");
+      const { data: blockedRows } = await sb.from("rb_blocked_days").select("*").order("date").catch(()=>({data:[]}));
       setBlockedDays((blockedRows||[]).map(r=>({id:r.id, adminId:r.admin_id, date:r.date, note:r.note||""})));
     } catch(e) {
       showToast("⚠️ Verbindungsfehler – bitte neu laden","#c0392b");
@@ -2101,8 +2101,14 @@ export default function StallApp() {
       .on("postgres_changes",{event:"*",schema:"public",table:"vacations"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_accounts"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_months"},()=>loadAll())
-      .on("postgres_changes",{event:"*",schema:"public",table:"rb_visits"},()=>loadAll())
-      .on("postgres_changes",{event:"*",schema:"public",table:"rb_blocked_days"},()=>loadAll())
+      .on("postgres_changes",{event:"*",schema:"public",table:"rb_visits"},async()=>{
+        const { data } = await sb.from("rb_visits").select("*").order("date").catch(()=>({data:[]}));
+        setRbVisits((data||[]).map(r=>({id:r.id,memberId:r.member_id,date:r.date,time:r.time||"",note:r.note||"",isLesson:r.is_lesson||false})));
+      })
+      .on("postgres_changes",{event:"*",schema:"public",table:"rb_blocked_days"},async()=>{
+        const { data } = await sb.from("rb_blocked_days").select("*").order("date").catch(()=>({data:[]}));
+        setBlockedDays((data||[]).map(r=>({id:r.id,adminId:r.admin_id,date:r.date,note:r.note||""})));
+      })
       .subscribe();
     return ()=>sb.removeChannel(channel);
   },[loadAll]);
