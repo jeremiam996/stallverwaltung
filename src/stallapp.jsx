@@ -268,10 +268,10 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
         const einsteller = members.find(m=>m.id===currentUser.einstellerId);
         return einsteller && b.adminId===einsteller.id;
       }
-      if(currentUser.type==="einsteller") return b.adminId===currentUser.id;
-      return false;
+      return false;  // Einsteller sehen keine gesperrten Tage im Kalender
     });
-    return { k, myMist, myVac, dayEvts, adminVacs: otherVacs, myRbVisits, isBlocked };
+    const blockedLevel = isBlocked ? (isAdmin ? "admin" : "rb") : null;
+    return { k, myMist, myVac, dayEvts, adminVacs: otherVacs, myRbVisits, isBlocked: blockedLevel };
   };
   const getDots = (info, isSelected) => {
     const dots = [];
@@ -415,19 +415,21 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             const hasMustCover= info.adminVacs?.some(v=>v.mustCover);
             const hasVisit    = info.myRbVisits?.length>0;
             const hasLesson   = info.myRbVisits?.some(v=>v.isLesson);
+            const blockedRb   = info.isBlocked==="rb";
+            const blockedAdmin= info.isBlocked==="admin";
             const hasContent  = info.myMist||info.myVac||info.dayEvts.length>0||hasAdminVac||hasVisit||info.isBlocked;
             const dots        = getDots(info, isSelected);
-            // Background priority: selected > blocked > lesson > visit > mist > vac > adminvac > default
             let bg, border;
-            if(isSelected)        { bg="#3d2b1f";   border="2px solid #3d2b1f"; }
-            else if(info.isBlocked){ bg="#fdf2f2";   border="2px dashed #c0392b"; }
-            else if(hasLesson)    { bg="#f0e8fa";   border="2px solid #8e44ad"; }
-            else if(hasVisit)     { bg="#f3eafa";   border="1.5px solid #9b59b6"; }
-            else if(info.myMist)  { bg="#f5e8d4";   border="1px solid #e2d5c0"; }
-            else if(info.myVac)   { bg="#e8f8f5";   border="1px solid #a8e6cf"; }
-            else if(hasMustCover) { bg="#fff";       border="1.5px dashed #e74c3c"; }
-            else if(hasAdminVac)  { bg="#f7f7f7";   border="1px dashed #ccc"; }
-            else                  { bg="#fff";       border="1px solid #ede5d5"; }
+            if(isSelected)     { bg="#3d2b1f";  border="2px solid #3d2b1f"; }
+            else if(blockedRb) { bg="#fdf2f2";  border="2px dashed #c0392b"; }
+            else if(hasLesson) { bg="#f0e8fa";  border="2px solid #8e44ad"; }
+            else if(hasVisit)  { bg="#f3eafa";  border="1.5px solid #9b59b6"; }
+            else if(info.myMist){ bg="#f5e8d4"; border="1px solid #e2d5c0"; }
+            else if(info.myVac){ bg="#e8f8f5";  border="1px solid #a8e6cf"; }
+            else if(hasMustCover){bg="#fff";    border="1.5px dashed #e74c3c"; }
+            else if(hasAdminVac){bg="#f7f7f7";  border="1px dashed #ccc"; }
+            else if(blockedAdmin){bg="#fff";    border="1px dashed #e0b0b0"; }
+            else               { bg="#fff";     border="1px solid #ede5d5"; }
             if(isToday&&!isSelected) border="2px solid #c8913a";
             return (
               <div key={info.k}
@@ -436,10 +438,11 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
                   alignItems:"center",justifyContent:"center",gap:1,
                   cursor:hasContent?"pointer":"default",background:bg,border,transition:"all .15s"}}>
                 <div style={{fontSize:10,fontWeight:isToday?700:400,
-                  color:isSelected?"#fff":info.isBlocked?"#c0392b":hasLesson?"#8e44ad":hasVisit?"#7d3c98":info.myMist?"#c8913a":"#2c2416"}}>
+                  color:isSelected?"#fff":blockedRb?"#c0392b":hasLesson?"#8e44ad":hasVisit?"#7d3c98":info.myMist?"#c8913a":blockedAdmin?"#c8a0a0":"#2c2416"}}>
                   {day.getDate()}
                 </div>
-                {info.isBlocked&&<div style={{fontSize:7,color:"#c0392b"}}>🚫</div>}
+                {blockedRb&&<div style={{fontSize:7,color:"#c0392b"}}>🚫</div>}
+                {blockedAdmin&&!blockedRb&&<div style={{fontSize:7,color:"#c8a0a0"}}>⛔</div>}
                 {!info.isBlocked&&hasLesson&&<div style={{fontSize:7}}>🎓</div>}
                 {!info.isBlocked&&hasVisit&&!hasLesson&&<div style={{fontSize:7}}>🐎</div>}
                 {!hasVisit&&!info.isBlocked&&dots.length>0&&<div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>}
@@ -457,8 +460,11 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
           {currentUser.type==="reitbeteiligung"&&(rbVisits||[]).some(v=>v.memberId===currentUser.id)&&(
             <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#9b59b6",display:"inline-block"}}/> Mein Besuch</span>
           )}
-          {(currentUser.type==="reitbeteiligung"||(currentUser.type==="einsteller"||isAdmin))&&(blockedDays||[]).length>0&&(
-            <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:"#c0392b",display:"inline-block"}}/> 🚫 Gesperrt</span>
+          {(isAdmin||(currentUser.type==="reitbeteiligung"))&&(blockedDays||[]).length>0&&(
+            <span style={{display:"flex",alignItems:"center",gap:3}}>
+              <span style={{width:8,height:8,borderRadius:2,background:currentUser.type==="reitbeteiligung"?"#c0392b":"#e0b0b0",display:"inline-block"}}/>
+              {currentUser.type==="reitbeteiligung"?"🚫 Gesperrt":"⛔ Gesperrt"}
+            </span>
           )}
           {(()=>{
             const othersWithVac = members
@@ -510,10 +516,16 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
                 </div>
               </div>
             ))}
-            {selInfo.isBlocked&&(
+            {selInfo.isBlocked==="rb"&&(
               <div style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:"#fdf2f2",borderRadius:7,border:"2px dashed #c0392b"}}>
                 <span style={{fontSize:14}}>🚫</span>
                 <div style={{fontSize:11,fontWeight:600,color:"#c0392b"}}>Gesperrter Tag – kein Besuch möglich</div>
+              </div>
+            )}
+            {selInfo.isBlocked==="admin"&&(
+              <div style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:"#fdf8f8",borderRadius:7,border:"1px dashed #e0b0b0"}}>
+                <span style={{fontSize:12}}>⛔</span>
+                <div style={{fontSize:11,color:"#b07070"}}>Gesperrter Tag</div>
               </div>
             )}
             {selInfo.adminVacs?.map((v,i)=>(
