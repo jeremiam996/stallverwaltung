@@ -217,7 +217,7 @@ const Ic = ({ n, s=20 }) => {
 // SCREEN COMPONENTS — defined outside StallApp so React never remounts them
 // ══════════════════════════════════════════════════════════════════════════
 
-function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations, finMonths, finAccounts, selDay, setSelDay, upcomingEvents, unpaid, mistWarnings, getVacationLabel, calcTotal, getFinMonth, rbVisits }) {
+function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations, finMonths, finAccounts, selDay, setSelDay, upcomingEvents, unpaid, mistWarnings, getVacationLabel, calcTotal, getFinMonth, rbVisits, blockedDays }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const viewDate  = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
   const viewYear  = viewDate.getFullYear();
@@ -253,14 +253,25 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
     // RB visits: Einsteller sees their RBs' visits; RB sees own visits; Admin sees their RBs' visits
     const myRbVisits = (rbVisits||[]).filter(v => {
       if(v.date!==k) return false;
-      if(v.memberId===currentUser.id) return true; // own visit (RB)
+      if(v.memberId===currentUser.id) return true;
       const rb = members.find(m=>m.id===v.memberId);
       if(!rb) return false;
       if(currentUser.type==="einsteller" && rb.einstellerId===currentUser.id) return true;
       if(isAdmin && rb.einstellerId===currentUser.id) return true;
       return false;
     }).map(v=>({...v, memberName: members.find(m=>m.id===v.memberId)?.name.split(" ")[0]||""}));
-    return { k, myMist, myVac, dayEvts, adminVacs: otherVacs, myRbVisits };
+    // Blocked days: RB sees blocks from their admin/einsteller; admin/einsteller see their own blocks
+    const isBlocked = (blockedDays||[]).some(b => {
+      if(b.date!==k) return false;
+      if(isAdmin && b.adminId===currentUser.id) return true;
+      if(currentUser.type==="reitbeteiligung") {
+        const einsteller = members.find(m=>m.id===currentUser.einstellerId);
+        return einsteller && b.adminId===einsteller.id;
+      }
+      if(currentUser.type==="einsteller") return b.adminId===currentUser.id;
+      return false;
+    });
+    return { k, myMist, myVac, dayEvts, adminVacs: otherVacs, myRbVisits, isBlocked };
   };
   const getDots = (info, isSelected) => {
     const dots = [];
@@ -268,7 +279,7 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
     if(info.myMist) dots.push("#c8913a");
     info.dayEvts.forEach(e=>dots.push(e.color));
     if(info.adminVacs?.length>0) dots.push("#b0b0b0");
-    if(info.myRbVisits?.length>0) dots.push("#9b59b6");
+    if(info.myRbVisits?.length>0) dots.push(info.myRbVisits.some(v=>v.isLesson)?"#8e44ad":"#9b59b6");
     return dots.map((c,i)=>(
       <div key={i} style={{width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":c,flexShrink:0}}/>
     ));
@@ -397,26 +408,41 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
           {Array.from({length:leadingBlanks}).map((_,i)=><div key={"b"+i}/>)}
           {calDays.map(day=>{
-            const info       = getDayInfo(day);
-            const isToday    = info.k===dkl(today);
-            const isSelected = selDay && dkl(day)===dkl(selDay);
+            const info        = getDayInfo(day);
+            const isToday     = info.k===dkl(today);
+            const isSelected  = selDay && dkl(day)===dkl(selDay);
             const hasAdminVac = info.adminVacs?.length>0;
-            const hasMustCover = info.adminVacs?.some(v=>v.mustCover);
-            const hasContent = info.myMist||info.myVac||info.dayEvts.length>0||hasAdminVac;
-            const dots       = getDots(info, isSelected);
+            const hasMustCover= info.adminVacs?.some(v=>v.mustCover);
+            const hasVisit    = info.myRbVisits?.length>0;
+            const hasLesson   = info.myRbVisits?.some(v=>v.isLesson);
+            const hasContent  = info.myMist||info.myVac||info.dayEvts.length>0||hasAdminVac||hasVisit||info.isBlocked;
+            const dots        = getDots(info, isSelected);
+            // Background priority: selected > blocked > lesson > visit > mist > vac > adminvac > default
+            let bg, border;
+            if(isSelected)       { bg="#3d2b1f";         border="2px solid #3d2b1f"; }
+            else if(info.isBlocked){ bg="#f5f0f5";        border="2px solid #8e44ad"; }
+            else if(hasLesson)   { bg="#f0e8fa";         border="2px solid #8e44ad"; }
+            else if(hasVisit)    { bg="#f3eafa";         border="1.5px solid #9b59b6"; }
+            else if(info.myMist) { bg="#f5e8d4";         border="1px solid #e2d5c0"; }
+            else if(info.myVac)  { bg="#e8f8f5";         border="1px solid #a8e6cf"; }
+            else if(hasMustCover){ bg="#fff";             border="1.5px dashed #e74c3c"; }
+            else if(hasAdminVac) { bg="#f7f7f7";         border="1px dashed #ccc"; }
+            else                 { bg="#fff";             border="1px solid #ede5d5"; }
+            if(isToday&&!isSelected) border="2px solid #c8913a";
             return (
               <div key={info.k}
                 onClick={()=>hasContent&&setSelDay(prev=>prev&&dkl(prev)===info.k?null:day)}
-                style={{
-                  aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",
-                  alignItems:"center",justifyContent:"center",gap:2,
-                  cursor:hasContent?"pointer":"default",
-                  background:isSelected?"#3d2b1f":info.myMist?"#f5e8d4":info.myVac?"#e8f8f5":hasAdminVac?"#f7f7f7":"#fff",
-                  border:isToday?"2px solid #c8913a":isSelected?"2px solid #3d2b1f":hasMustCover?"1.5px dashed #e74c3c":hasAdminVac?"1px dashed #ccc":"1px solid #ede5d5",
-                  transition:"all .15s"
-                }}>
-                <div style={{fontSize:10,fontWeight:isToday?700:400,color:isSelected?"#fff":info.myMist?"#c8913a":"#2c2416"}}>{day.getDate()}</div>
-                {dots.length>0&&<div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>}
+                style={{aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",
+                  alignItems:"center",justifyContent:"center",gap:1,
+                  cursor:hasContent?"pointer":"default",background:bg,border,transition:"all .15s"}}>
+                <div style={{fontSize:10,fontWeight:isToday?700:400,
+                  color:isSelected?"#fff":info.isBlocked?"#8e44ad":hasLesson?"#8e44ad":hasVisit?"#7d3c98":info.myMist?"#c8913a":"#2c2416"}}>
+                  {day.getDate()}
+                </div>
+                {info.isBlocked&&<div style={{fontSize:7,color:isSelected?"#fff":"#8e44ad"}}>🔒</div>}
+                {!info.isBlocked&&hasLesson&&<div style={{fontSize:7}}>🎓</div>}
+                {!info.isBlocked&&hasVisit&&!hasLesson&&<div style={{fontSize:7}}>🐎</div>}
+                {!hasVisit&&!info.isBlocked&&dots.length>0&&<div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>}
               </div>
             );
           })}
@@ -430,6 +456,9 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
           )}
           {currentUser.type==="reitbeteiligung"&&(rbVisits||[]).some(v=>v.memberId===currentUser.id)&&(
             <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#9b59b6",display:"inline-block"}}/> Mein Besuch</span>
+          )}
+          {(currentUser.type==="reitbeteiligung"||(currentUser.type==="einsteller"||isAdmin))&&(blockedDays||[]).length>0&&(
+            <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:"#8e44ad",display:"inline-block"}}/> 🔒 Gesperrt</span>
           )}
           {(()=>{
             const othersWithVac = members
@@ -471,7 +500,7 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
               </div>
             )}
             {selInfo.myRbVisits?.map((v,i)=>(
-              <div key={i} style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:"#f5f0fa",borderRadius:7,border:"1px solid #d5aff5"}}>
+              <div key={i} style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:v.isLesson?"#f0e8fa":"#f3eafa",borderRadius:7,border:`1px solid ${v.isLesson?"#8e44ad":"#c9a0dc"}`}}>
                 <span style={{fontSize:14}}>{v.isLesson?"🎓":"🐎"}</span>
                 <div>
                   <div style={{fontSize:11,fontWeight:600,color:"#7d3c98"}}>
@@ -481,6 +510,12 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
                 </div>
               </div>
             ))}
+            {selInfo.isBlocked&&(
+              <div style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:"#f5f0fa",borderRadius:7,border:"2px solid #8e44ad"}}>
+                <span style={{fontSize:14}}>🔒</span>
+                <div style={{fontSize:11,fontWeight:600,color:"#8e44ad"}}>Gesperrter Tag – kein Besuch möglich</div>
+              </div>
+            )}
             {selInfo.adminVacs?.map((v,i)=>(
               <div key={i} style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:v.mustCover?"#fdf0ee":"#f5f5f5",borderRadius:7,border:v.mustCover?"1px solid #f5c6c0":"1px solid #e8e8e8"}}>
                 <span style={{fontSize:12}}>{v.mustCover?"🔴":"🌴"}</span>
@@ -524,13 +559,15 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
   );
 }
 
-function CalendarScreen({ currentUser, isAdmin, members, events, vacations, einstellerList, showAddVacation, setShowAddVacation, newVac, setNewVac, vacTargetId, openAddVacation, addVacation, deleteVacation, updateVacation, deleteEvent, updateEvent, setShowAddEvent, rbVisits, showAddVisit, setShowAddVisit, newVisit, setNewVisit, addRbVisit, deleteRbVisit, updateRbVisit }) {
+function CalendarScreen({ currentUser, isAdmin, members, events, vacations, einstellerList, showAddVacation, setShowAddVacation, newVac, setNewVac, vacTargetId, openAddVacation, addVacation, deleteVacation, updateVacation, deleteEvent, updateEvent, setShowAddEvent, rbVisits, showAddVisit, setShowAddVisit, newVisit, setNewVisit, addRbVisit, deleteRbVisit, updateRbVisit, blockedDays, addBlockedDay, deleteBlockedDay }) {
   const [editVac, setEditVac] = useState(null);
   const [editForm, setEditForm] = useState({from:"",to:"",note:"",mustCover:false});
   const [editEvt, setEditEvt] = useState(null);
   const [editEvtForm, setEditEvtForm] = useState({type:"",date:"",time:"",note:""});
   const [editVisit, setEditVisit] = useState(null);
   const [editVisitForm, setEditVisitForm] = useState({date:"",note:"",isLesson:false});
+  const [showBlockPicker, setShowBlockPicker] = useState(false);
+  const [blockDate, setBlockDate] = useState("");
 
   const openEditVac = (memberId, vac) => { setEditVac({memberId,vac}); setEditForm({from:vac.from,to:vac.to,note:vac.note,mustCover:vac.mustCover||false}); };
   const saveEditVac = async () => {
@@ -729,13 +766,17 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
                     setShowAddVisit(true);
                   }}>🎓 Reitunterricht</button>
               )}
+              {isAdmin&&(
+                <button style={{...S.btn("light"),padding:"7px 12px",fontSize:11}}
+                  onClick={()=>{setBlockDate("");setShowBlockPicker(true);}}>🔒 Tag sperren</button>
+              )}
               {currentUser.type==="reitbeteiligung"&&(
                 <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}}
                   onClick={()=>{setNewVisit({date:"",note:"",isLesson:false,targetId:currentUser.id});setShowAddVisit(true);}}>+ Besuch</button>
               )}
             </div>
           </div>
-          {visibleVisits.length===0&&<div style={{fontSize:12,color:"#aaa"}}>Noch keine Besuche eingetragen</div>}
+          {visibleVisits.length===0&&<div style={{fontSize:12,color:"#aaa",marginBottom:8}}>Noch keine Besuche eingetragen</div>}
           {visibleVisits.map(v=>{
             const rb = members.find(m=>m.id===v.memberId);
             const canAct = currentUser.id===v.memberId || isAdmin;
@@ -761,6 +802,25 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
               </div>
             );
           })}
+          {/* Gesperrte Tage — nur Admin sieht + verwaltet sie */}
+          {isAdmin&&(()=>{
+            const myBlocked = (blockedDays||[]).filter(b=>b.adminId===currentUser.id).sort((a,b)=>a.date.localeCompare(b.date));
+            if(myBlocked.length===0) return null;
+            return (
+              <div style={{marginTop:12,borderTop:"1px solid #f0e8d8",paddingTop:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#8e44ad",marginBottom:6}}>🔒 Gesperrte Tage</div>
+                {myBlocked.map(b=>(
+                  <div key={b.id} style={{...S.row,justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
+                    <div>
+                      <span style={{fontSize:12,fontWeight:600,color:"#8e44ad"}}>{new Date(b.date+"T00:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"short"})}</span>
+                      {b.note&&<span style={{fontSize:10,color:"#aaa",marginLeft:6}}>{b.note}</span>}
+                    </div>
+                    <button onClick={()=>deleteBlockedDay(b.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -824,6 +884,24 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
           <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:8}}>
             <button style={S.btn("light")} onClick={()=>setEditVisit(null)}>Abbrechen</button>
             <button style={S.btn("teal")} onClick={saveEditVisit}>💾 Speichern</button>
+          </div>
+        </div></div>
+      )}
+
+      {/* Block day modal */}
+      {showBlockPicker&&(
+        <div style={S.modal}><div style={S.mBox}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>🔒 Tag sperren</div>
+          <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>Die Reitbeteiligung kann an diesem Tag nicht kommen</div>
+          <label style={S.label}>Datum</label>
+          <input type="date" style={S.input} value={blockDate} onChange={e=>setBlockDate(e.target.value)}/>
+          <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:12}}>
+            <button style={S.btn("light")} onClick={()=>setShowBlockPicker(false)}>Abbrechen</button>
+            <button style={{...S.btn("primary"),background:"#8e44ad",borderColor:"#8e44ad"}} onClick={async()=>{
+              if(!blockDate) return;
+              await addBlockedDay(blockDate);
+              setShowBlockPicker(false);
+            }}>🔒 Sperren</button>
           </div>
         </div></div>
       )}
@@ -1949,6 +2027,7 @@ export default function StallApp() {
   const [rbVisits,       setRbVisits]       = useState([]);
   const [showAddVisit,   setShowAddVisit]   = useState(false);
   const [newVisit,       setNewVisit]       = useState({date:"",time:"",note:"",isLesson:false});
+  const [blockedDays,    setBlockedDays]    = useState([]); // [{id, adminId, date, note}]
 
   const weekDates = getWeekDates(weekOffset);
   const isAdmin   = currentUser?.type==="admin";
@@ -1989,6 +2068,9 @@ export default function StallApp() {
 
       const { data: visitRows } = await sb.from("rb_visits").select("*").order("date");
       setRbVisits((visitRows||[]).map(r=>({id:r.id, memberId:r.member_id, date:r.date, time:r.time||"", note:r.note||"", isLesson:r.is_lesson||false})));
+
+      const { data: blockedRows } = await sb.from("rb_blocked_days").select("*").order("date");
+      setBlockedDays((blockedRows||[]).map(r=>({id:r.id, adminId:r.admin_id, date:r.date, note:r.note||""})));
     } catch(e) {
       showToast("⚠️ Verbindungsfehler – bitte neu laden","#c0392b");
     } finally {
@@ -2008,6 +2090,7 @@ export default function StallApp() {
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_accounts"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_months"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"rb_visits"},()=>loadAll())
+      .on("postgres_changes",{event:"*",schema:"public",table:"rb_blocked_days"},()=>loadAll())
       .subscribe();
     return ()=>sb.removeChannel(channel);
   },[loadAll]);
@@ -2090,6 +2173,12 @@ export default function StallApp() {
 
   const addRbVisit = async (memberId) => {
     if(!newVisit.date) return;
+    // Check if day is blocked by the Einsteller/Admin
+    const rb = members.find(m=>m.id===memberId);
+    const adminId = rb?.einstellerId;
+    if(adminId && (blockedDays||[]).some(b=>b.date===newVisit.date&&b.adminId===adminId)) {
+      showToast("🔒 Dieser Tag ist gesperrt!","#8e44ad"); return;
+    }
     const row={id:Date.now(), member_id:memberId, date:newVisit.date, time:newVisit.time||null, note:newVisit.note||"", is_lesson:newVisit.isLesson||false};
     setRbVisits(p=>[...p,{id:row.id,memberId,date:row.date,time:row.time||"",note:row.note,isLesson:row.is_lesson}]);
     await sb.from("rb_visits").insert(row);
@@ -2105,6 +2194,17 @@ export default function StallApp() {
     setRbVisits(p=>p.map(v=>v.id===id?{...v,...data}:v));
     await sb.from("rb_visits").update(row).eq("id",id);
     showToast("✅ Besuch aktualisiert!");
+  };
+  const addBlockedDay = async (date, note="") => {
+    const row={id:Date.now(), admin_id:currentUser.id, date, note};
+    setBlockedDays(p=>[...p,{id:row.id,adminId:currentUser.id,date,note}]);
+    await sb.from("rb_blocked_days").insert(row);
+    showToast("🔒 Tag gesperrt!");
+  };
+  const deleteBlockedDay = async (id) => {
+    setBlockedDays(p=>p.filter(d=>d.id!==id));
+    await sb.from("rb_blocked_days").delete().eq("id",id);
+    showToast("🔓 Sperrung aufgehoben!");
   };
 
   const addMember = async () => {
@@ -2271,8 +2371,8 @@ export default function StallApp() {
       <div style={S.nav}>{tabs.map(t=><button key={t.id} style={S.navBtn(tab===t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>)}</div>
 
       <div style={{paddingBottom:16}}>
-        {tab==="home"     && <HomeScreen {...commonProps} events={events} mistData={mistData} finMonths={finMonths} finAccounts={finAccounts} selDay={selDay} setSelDay={setSelDay} upcomingEvents={upcomingEvents} unpaid={unpaid} mistWarnings={mistWarnings} getVacationLabel={getVacationLabel} rbVisits={rbVisits} {...finHelpers}/>}
-        {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} updateVacation={updateVacation} deleteEvent={deleteEvent} updateEvent={updateEvent} setShowAddEvent={setShowAddEvent} rbVisits={rbVisits} showAddVisit={showAddVisit} setShowAddVisit={setShowAddVisit} newVisit={newVisit} setNewVisit={setNewVisit} addRbVisit={addRbVisit} deleteRbVisit={deleteRbVisit} updateRbVisit={updateRbVisit}/>}
+        {tab==="home"     && <HomeScreen {...commonProps} events={events} mistData={mistData} finMonths={finMonths} finAccounts={finAccounts} selDay={selDay} setSelDay={setSelDay} upcomingEvents={upcomingEvents} unpaid={unpaid} mistWarnings={mistWarnings} getVacationLabel={getVacationLabel} rbVisits={rbVisits} blockedDays={blockedDays} {...finHelpers}/>}
+        {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} updateVacation={updateVacation} deleteEvent={deleteEvent} updateEvent={updateEvent} setShowAddEvent={setShowAddEvent} rbVisits={rbVisits} showAddVisit={showAddVisit} setShowAddVisit={setShowAddVisit} newVisit={newVisit} setNewVisit={setNewVisit} addRbVisit={addRbVisit} deleteRbVisit={deleteRbVisit} updateRbVisit={updateRbVisit} blockedDays={blockedDays} addBlockedDay={addBlockedDay} deleteBlockedDay={deleteBlockedDay}/>}
         {tab==="mist"     && <MistScreen {...commonProps} mistData={mistData} weekDates={weekDates} weekOffset={weekOffset} setWeekOffset={setWeekOffset} toggleMist={toggleMist} isMistLocked={isMistLocked} saveMemberEdit={saveMemberEdit} showToast={showToast}/>}
         {tab==="members"  && <MembersScreen {...commonProps} showAddMember={showAddMember} setShowAddMember={setShowAddMember} newMember={newMember} setNewMember={setNewMember} addMember={addMember} deleteMember={deleteMember} saveMemberEdit={saveMemberEdit} getVacationLabel={getVacationLabel} editId={editId} setEditId={setEditId} editData={editData} setEditData={setEditData} pinMode={pinMode} setPinMode={setPinMode} pins={pins} setPins={setPins} pinErr={pinErr} setPinErr={setPinErr}/>}
         {tab==="finanzen" && <FinanzenScreen {...commonProps} finMonths={finMonths} finAccounts={finAccounts} finViewMonth={finViewMonth} finViewYear={finViewYear} setFinViewMonth={setFinViewMonth} setFinViewYear={setFinViewYear} editFee={editFee} setEditFee={setEditFee} editPay={editPay} setEditPay={setEditPay} addExtra={addExtra} setAddExtra={setAddExtra} extraForm={extraForm} setExtraForm={setExtraForm} {...finHelpers}/>}
