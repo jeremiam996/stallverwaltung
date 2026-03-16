@@ -419,15 +419,15 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             const dots        = getDots(info, isSelected);
             // Background priority: selected > blocked > lesson > visit > mist > vac > adminvac > default
             let bg, border;
-            if(isSelected)       { bg="#3d2b1f";         border="2px solid #3d2b1f"; }
-            else if(info.isBlocked){ bg="#f5f0f5";        border="2px solid #8e44ad"; }
-            else if(hasLesson)   { bg="#f0e8fa";         border="2px solid #8e44ad"; }
-            else if(hasVisit)    { bg="#f3eafa";         border="1.5px solid #9b59b6"; }
-            else if(info.myMist) { bg="#f5e8d4";         border="1px solid #e2d5c0"; }
-            else if(info.myVac)  { bg="#e8f8f5";         border="1px solid #a8e6cf"; }
-            else if(hasMustCover){ bg="#fff";             border="1.5px dashed #e74c3c"; }
-            else if(hasAdminVac) { bg="#f7f7f7";         border="1px dashed #ccc"; }
-            else                 { bg="#fff";             border="1px solid #ede5d5"; }
+            if(isSelected)        { bg="#3d2b1f";   border="2px solid #3d2b1f"; }
+            else if(info.isBlocked){ bg="#fdf2f2";   border="2px dashed #c0392b"; }
+            else if(hasLesson)    { bg="#f0e8fa";   border="2px solid #8e44ad"; }
+            else if(hasVisit)     { bg="#f3eafa";   border="1.5px solid #9b59b6"; }
+            else if(info.myMist)  { bg="#f5e8d4";   border="1px solid #e2d5c0"; }
+            else if(info.myVac)   { bg="#e8f8f5";   border="1px solid #a8e6cf"; }
+            else if(hasMustCover) { bg="#fff";       border="1.5px dashed #e74c3c"; }
+            else if(hasAdminVac)  { bg="#f7f7f7";   border="1px dashed #ccc"; }
+            else                  { bg="#fff";       border="1px solid #ede5d5"; }
             if(isToday&&!isSelected) border="2px solid #c8913a";
             return (
               <div key={info.k}
@@ -436,10 +436,10 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
                   alignItems:"center",justifyContent:"center",gap:1,
                   cursor:hasContent?"pointer":"default",background:bg,border,transition:"all .15s"}}>
                 <div style={{fontSize:10,fontWeight:isToday?700:400,
-                  color:isSelected?"#fff":info.isBlocked?"#8e44ad":hasLesson?"#8e44ad":hasVisit?"#7d3c98":info.myMist?"#c8913a":"#2c2416"}}>
+                  color:isSelected?"#fff":info.isBlocked?"#c0392b":hasLesson?"#8e44ad":hasVisit?"#7d3c98":info.myMist?"#c8913a":"#2c2416"}}>
                   {day.getDate()}
                 </div>
-                {info.isBlocked&&<div style={{fontSize:7,color:isSelected?"#fff":"#8e44ad"}}>🔒</div>}
+                {info.isBlocked&&<div style={{fontSize:7,color:"#c0392b"}}>🚫</div>}
                 {!info.isBlocked&&hasLesson&&<div style={{fontSize:7}}>🎓</div>}
                 {!info.isBlocked&&hasVisit&&!hasLesson&&<div style={{fontSize:7}}>🐎</div>}
                 {!hasVisit&&!info.isBlocked&&dots.length>0&&<div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>}
@@ -458,7 +458,7 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#9b59b6",display:"inline-block"}}/> Mein Besuch</span>
           )}
           {(currentUser.type==="reitbeteiligung"||(currentUser.type==="einsteller"||isAdmin))&&(blockedDays||[]).length>0&&(
-            <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:"#8e44ad",display:"inline-block"}}/> 🔒 Gesperrt</span>
+            <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:"#c0392b",display:"inline-block"}}/> 🚫 Gesperrt</span>
           )}
           {(()=>{
             const othersWithVac = members
@@ -511,9 +511,9 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
               </div>
             ))}
             {selInfo.isBlocked&&(
-              <div style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:"#f5f0fa",borderRadius:7,border:"2px solid #8e44ad"}}>
-                <span style={{fontSize:14}}>🔒</span>
-                <div style={{fontSize:11,fontWeight:600,color:"#8e44ad"}}>Gesperrter Tag – kein Besuch möglich</div>
+              <div style={{...S.row,gap:8,marginBottom:6,padding:"6px 8px",background:"#fdf2f2",borderRadius:7,border:"2px dashed #c0392b"}}>
+                <span style={{fontSize:14}}>🚫</span>
+                <div style={{fontSize:11,fontWeight:600,color:"#c0392b"}}>Gesperrter Tag – kein Besuch möglich</div>
               </div>
             )}
             {selInfo.adminVacs?.map((v,i)=>(
@@ -808,11 +808,11 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
             if(myBlocked.length===0) return null;
             return (
               <div style={{marginTop:12,borderTop:"1px solid #f0e8d8",paddingTop:10}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#8e44ad",marginBottom:6}}>🔒 Gesperrte Tage</div>
+                <div style={{fontSize:11,fontWeight:700,color:"#c0392b",marginBottom:6}}>🚫 Gesperrte Tage</div>
                 {myBlocked.map(b=>(
                   <div key={b.id} style={{...S.row,justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
                     <div>
-                      <span style={{fontSize:12,fontWeight:600,color:"#8e44ad"}}>{new Date(b.date+"T00:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"short"})}</span>
+                      <span style={{fontSize:12,fontWeight:600,color:"#c0392b"}}>{new Date(b.date+"T00:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"short"})}</span>
                       {b.note&&<span style={{fontSize:10,color:"#aaa",marginLeft:6}}>{b.note}</span>}
                     </div>
                     <button onClick={()=>deleteBlockedDay(b.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>
