@@ -419,33 +419,48 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             const blockedAdmin= info.isBlocked==="admin";
             const hasContent  = info.myMist||info.myVac||info.dayEvts.length>0||hasAdminVac||hasVisit||info.isBlocked;
             const dots        = getDots(info, isSelected);
+
+            // Mist is always the primary background — visits/blocked shown as badges on top
             let bg, border;
-            if(isSelected)     { bg="#3d2b1f";  border="2px solid #3d2b1f"; }
-            else if(blockedRb) { bg="#fdf2f2";  border="2px dashed #c0392b"; }
-            else if(hasLesson) { bg="#f0e8fa";  border="2px solid #8e44ad"; }
-            else if(hasVisit)  { bg="#f3eafa";  border="1.5px solid #9b59b6"; }
-            else if(info.myMist){ bg="#f5e8d4"; border="1px solid #e2d5c0"; }
-            else if(info.myVac){ bg="#e8f8f5";  border="1px solid #a8e6cf"; }
+            if(isSelected)      { bg="#3d2b1f"; border="2px solid #3d2b1f"; }
+            else if(info.myMist){ bg="#c8913a"; border="2px solid #a07030"; }
+            else if(info.myVac) { bg="#e8f8f5"; border="1px solid #a8e6cf"; }
             else if(hasMustCover){bg="#fff";    border="1.5px dashed #e74c3c"; }
-            else if(hasAdminVac){bg="#f7f7f7";  border="1px dashed #ccc"; }
-            else if(blockedAdmin){bg="#fff";    border="1px dashed #e0b0b0"; }
-            else               { bg="#fff";     border="1px solid #ede5d5"; }
+            else if(hasAdminVac){ bg="#f7f7f7"; border="1px dashed #ccc"; }
+            else if(blockedRb)  { bg="#fdf2f2"; border="2px dashed #c0392b"; }
+            else if(blockedAdmin){ bg="#fff";   border="1px dashed #e0b0b0"; }
+            else if(hasLesson)  { bg="#f0e8fa"; border="2px solid #8e44ad"; }
+            else if(hasVisit)   { bg="#f3eafa"; border="1.5px solid #9b59b6"; }
+            else                { bg="#fff";    border="1px solid #ede5d5"; }
             if(isToday&&!isSelected) border="2px solid #c8913a";
+
+            // Icon logic: mist checked first, then overlay badges
+            const mistChecked = info.myMist && !isSelected;
             return (
               <div key={info.k}
                 onClick={()=>hasContent&&setSelDay(prev=>prev&&dkl(prev)===info.k?null:day)}
                 style={{aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",
-                  alignItems:"center",justifyContent:"center",gap:1,
+                  alignItems:"center",justifyContent:"center",gap:1,position:"relative",
                   cursor:hasContent?"pointer":"default",background:bg,border,transition:"all .15s"}}>
                 <div style={{fontSize:10,fontWeight:isToday?700:400,
-                  color:isSelected?"#fff":blockedRb?"#c0392b":hasLesson?"#8e44ad":hasVisit?"#7d3c98":info.myMist?"#c8913a":blockedAdmin?"#c8a0a0":"#2c2416"}}>
+                  color:isSelected?"#fff":info.myMist?"#fff":blockedRb?"#c0392b":hasLesson?"#8e44ad":hasVisit?"#7d3c98":blockedAdmin?"#c8a0a0":"#2c2416"}}>
                   {day.getDate()}
                 </div>
-                {blockedRb&&<div style={{fontSize:7,color:"#c0392b"}}>🚫</div>}
-                {blockedAdmin&&!blockedRb&&<div style={{fontSize:7,color:"#c8a0a0"}}>⛔</div>}
-                {!info.isBlocked&&hasLesson&&<div style={{fontSize:7}}>🎓</div>}
-                {!info.isBlocked&&hasVisit&&!hasLesson&&<div style={{fontSize:7}}>🐎</div>}
-                {!hasVisit&&!info.isBlocked&&dots.length>0&&<div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>}
+                {/* Primary icon row */}
+                {info.myMist&&!isSelected&&<div style={{fontSize:8,color:"#fff"}}>✓</div>}
+                {!info.myMist&&blockedRb&&<div style={{fontSize:7,color:"#c0392b"}}>🚫</div>}
+                {!info.myMist&&blockedAdmin&&<div style={{fontSize:7,color:"#c8a0a0"}}>⛔</div>}
+                {!info.myMist&&!info.isBlocked&&hasLesson&&<div style={{fontSize:7}}>🎓</div>}
+                {!info.myMist&&!info.isBlocked&&hasVisit&&!hasLesson&&<div style={{fontSize:7}}>🐎</div>}
+                {/* Visit/blocked badge on top of mist */}
+                {info.myMist&&(hasVisit||info.isBlocked)&&(
+                  <div style={{position:"absolute",top:1,right:2,fontSize:8,lineHeight:1}}>
+                    {blockedRb?"🚫":blockedAdmin?"⛔":hasLesson?"🎓":"🐎"}
+                  </div>
+                )}
+                {!info.myMist&&!hasVisit&&!info.isBlocked&&dots.length>0&&(
+                  <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>
+                )}
               </div>
             );
           })}
