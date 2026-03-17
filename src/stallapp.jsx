@@ -420,10 +420,14 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             const hasContent  = info.myMist||info.myVac||info.dayEvts.length>0||hasAdminVac||hasVisit||info.isBlocked;
             const dots        = getDots(info, isSelected);
 
-            // Mist is always the primary background — visits/blocked shown as badges on top
+            // Mist = primary background. Visits/blocked = shown via border + corner badge.
             let bg, border;
-            if(isSelected)      { bg="#3d2b1f"; border="2px solid #3d2b1f"; }
-            else if(info.myMist){ bg="#c8913a"; border="2px solid #a07030"; }
+            if(isSelected)       { bg="#3d2b1f"; border="2px solid #3d2b1f"; }
+            else if(info.myMist && blockedRb)  { bg="#c8913a"; border="2px dashed #c0392b"; }
+            else if(info.myMist && blockedAdmin){ bg="#c8913a"; border="1.5px dashed #e0b0b0"; }
+            else if(info.myMist && hasLesson)  { bg="#c8913a"; border="2px solid #8e44ad"; }
+            else if(info.myMist && hasVisit)   { bg="#c8913a"; border="2px solid #9b59b6"; }
+            else if(info.myMist)               { bg="#c8913a"; border="2px solid #a07030"; }
             else if(info.myVac) { bg="#e8f8f5"; border="1px solid #a8e6cf"; }
             else if(hasMustCover){bg="#fff";    border="1.5px dashed #e74c3c"; }
             else if(hasAdminVac){ bg="#f7f7f7"; border="1px dashed #ccc"; }
@@ -434,8 +438,7 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             else                { bg="#fff";    border="1px solid #ede5d5"; }
             if(isToday&&!isSelected) border="2px solid #c8913a";
 
-            // Icon logic: mist checked first, then overlay badges
-            const mistChecked = info.myMist && !isSelected;
+            const mistColor = isSelected?"#fff":"#fff";
             return (
               <div key={info.k}
                 onClick={()=>hasContent&&setSelDay(prev=>prev&&dkl(prev)===info.k?null:day)}
@@ -446,20 +449,28 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
                   color:isSelected?"#fff":info.myMist?"#fff":blockedRb?"#c0392b":hasLesson?"#8e44ad":hasVisit?"#7d3c98":blockedAdmin?"#c8a0a0":"#2c2416"}}>
                   {day.getDate()}
                 </div>
-                {/* Primary icon row */}
+                {/* Main icon */}
                 {info.myMist&&!isSelected&&<div style={{fontSize:8,color:"#fff"}}>✓</div>}
                 {!info.myMist&&blockedRb&&<div style={{fontSize:7,color:"#c0392b"}}>🚫</div>}
                 {!info.myMist&&blockedAdmin&&<div style={{fontSize:7,color:"#c8a0a0"}}>⛔</div>}
                 {!info.myMist&&!info.isBlocked&&hasLesson&&<div style={{fontSize:7}}>🎓</div>}
                 {!info.myMist&&!info.isBlocked&&hasVisit&&!hasLesson&&<div style={{fontSize:7}}>🐎</div>}
-                {/* Visit/blocked badge on top of mist */}
+                {/* Corner badge when mist overlaps with visit/blocked */}
                 {info.myMist&&(hasVisit||info.isBlocked)&&(
-                  <div style={{position:"absolute",top:1,right:2,fontSize:8,lineHeight:1}}>
+                  <div style={{position:"absolute",top:1,right:2,fontSize:9,lineHeight:1,
+                    textShadow:"0 0 3px rgba(0,0,0,0.4)"}}>
                     {blockedRb?"🚫":blockedAdmin?"⛔":hasLesson?"🎓":"🐎"}
                   </div>
                 )}
+                {/* Dots for other events when no visit/blocked override */}
                 {!info.myMist&&!hasVisit&&!info.isBlocked&&dots.length>0&&(
                   <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>
+                )}
+                {/* On mist days, still show event dots if no visit badge */}
+                {info.myMist&&!hasVisit&&!info.isBlocked&&info.dayEvts.length>0&&(
+                  <div style={{display:"flex",gap:2,justifyContent:"center"}}>
+                    {info.dayEvts.map((e,i)=><div key={i} style={{width:3,height:3,borderRadius:"50%",background:"rgba(255,255,255,0.7)"}}/>)}
+                  </div>
                 )}
               </div>
             );
@@ -2206,7 +2217,6 @@ export default function StallApp() {
 
   const addRbVisit = async (memberId) => {
     if(!newVisit.date) return;
-    // Check if day is blocked by the Einsteller/Admin
     const rb = members.find(m=>m.id===memberId);
     const adminId = rb?.einstellerId;
     if(adminId && (blockedDays||[]).some(b=>b.date===newVisit.date&&b.adminId===adminId)) {
@@ -2214,7 +2224,8 @@ export default function StallApp() {
     }
     const row={id:Date.now(), member_id:memberId, date:newVisit.date, time:newVisit.time||null, note:newVisit.note||"", is_lesson:newVisit.isLesson||false};
     setRbVisits(p=>[...p,{id:row.id,memberId,date:row.date,time:row.time||"",note:row.note,isLesson:row.is_lesson}]);
-    await sb.from("rb_visits").insert(row);
+    const {error} = await sb.from("rb_visits").insert(row);
+    if(error) { showToast("⚠️ Fehler: "+error.message,"#c0392b"); return; }
     setNewVisit({date:"",time:"",note:"",isLesson:false}); setShowAddVisit(false);
     showToast("✅ Besuch eingetragen!");
   };
