@@ -2104,11 +2104,13 @@ export default function StallApp() {
       (fmRows||[]).forEach(r=>{ fmObj[r.member_id+"_"+r.month]={id:r.id,extras:r.extras||[],payment:r.payment,carryover:r.carryover||0,notes:r.notes||""}; });
       setFinMonths(fmObj);
 
-      const { data: visitRows } = await sb.from("rb_visits").select("*").order("date").catch(()=>({data:[]}));
-      setRbVisits((visitRows||[]).map(r=>({id:r.id, memberId:r.member_id, date:r.date, note:r.note||"", isLesson:r.is_lesson||false})));
+      const visitResult = await sb.from("rb_visits").select("*").order("date");
+      if(visitResult.error) console.error("rb_visits error:", visitResult.error.message);
+      setRbVisits((visitResult.data||[]).map(r=>({id:r.id, memberId:r.member_id, date:r.date, note:r.note||"", isLesson:r.is_lesson||false})));
 
-      const { data: blockedRows } = await sb.from("rb_blocked_days").select("*").order("date").catch(()=>({data:[]}));
-      setBlockedDays((blockedRows||[]).map(r=>({id:r.id, adminId:r.admin_id, date:r.date, note:r.note||""})));
+      const blockedResult = await sb.from("rb_blocked_days").select("*").order("date");
+      if(blockedResult.error) console.error("rb_blocked_days error:", blockedResult.error.message);
+      setBlockedDays((blockedResult.data||[]).map(r=>({id:r.id, adminId:r.admin_id, date:r.date, note:r.note||""})));
     } catch(e) {
       showToast("⚠️ Verbindungsfehler – bitte neu laden","#c0392b");
     } finally {
