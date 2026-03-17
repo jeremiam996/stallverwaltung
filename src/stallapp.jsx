@@ -273,17 +273,32 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
     const blockedLevel = isBlocked ? (isAdmin ? "admin" : "rb") : null;
     return { k, myMist, myVac, dayEvts, adminVacs: otherVacs, myRbVisits, isBlocked: blockedLevel };
   };
-  const getDots = (info, isSelected) => {
-    const dots = [];
-    if(info.myVac)  dots.push("#16a085");
-    if(info.myMist) dots.push("#c8913a");
-    info.dayEvts.forEach(e=>dots.push(e.color));
-    if(info.adminVacs?.length>0) dots.push("#b0b0b0");
-    if(info.myRbVisits?.length>0) dots.push(info.myRbVisits.some(v=>v.isLesson)?"#8e44ad":"#9b59b6");
-    return dots.map((c,i)=>(
-      <div key={i} style={{width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":c,flexShrink:0}}/>
-    ));
+  const getIndicators = (info, isSelected) => {
+    // Returns up to 3 colored bars shown below the date
+    const bars = [];
+    if(info.myVac)  bars.push("#16a085");
+    if(info.myMist) bars.push("#c8913a");
+    info.dayEvts.slice(0,2).forEach(e=>bars.push(e.color));
+    if(info.adminVacs?.length>0) bars.push("#b0b0b0");
+    if(info.myRbVisits?.length>0) bars.push(info.myRbVisits.some(v=>v.isLesson)?"#8e44ad":"#9b59b6");
+    // deduplicate and cap at 3
+    const unique = [...new Set(bars)].slice(0,3);
+    if(unique.length===0) return null;
+    return (
+      <div style={{display:"flex",gap:2,justifyContent:"center",marginTop:1}}>
+        {unique.map((c,i)=>(
+          <div key={i} style={{
+            width: unique.length===1 ? 16 : unique.length===2 ? 8 : 5,
+            height:3, borderRadius:2,
+            background:isSelected?"rgba(255,255,255,0.7)":c,
+            flexShrink:0
+          }}/>
+        ))}
+      </div>
+    );
   };
+  // Keep getDots as alias for compatibility
+  const getDots = getIndicators;
   const selInfo = selDay ? getDayInfo(selDay) : null;
 
   return (
@@ -463,13 +478,11 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
                   </div>
                 )}
                 {/* Dots for other events when no visit/blocked override */}
-                {!info.myMist&&!hasVisit&&!info.isBlocked&&dots.length>0&&(
-                  <div style={{display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center"}}>{dots}</div>
-                )}
-                {/* On mist days, still show event dots if no visit badge */}
+                {!info.myMist&&!hasVisit&&!info.isBlocked&&getIndicators(info,isSelected)}
+                {/* On mist days, still show event indicators with real colors */}
                 {info.myMist&&!hasVisit&&!info.isBlocked&&info.dayEvts.length>0&&(
-                  <div style={{display:"flex",gap:2,justifyContent:"center"}}>
-                    {info.dayEvts.map((e,i)=><div key={i} style={{width:3,height:3,borderRadius:"50%",background:"rgba(255,255,255,0.7)"}}/>)}
+                  <div style={{display:"flex",gap:2,justifyContent:"center",marginTop:1}}>
+                    {info.dayEvts.slice(0,3).map((e,i)=><div key={i} style={{width:4,height:3,borderRadius:2,background:e.color,opacity:0.85,boxShadow:"0 0 2px rgba(0,0,0,0.3)"}}/>)}
                   </div>
                 )}
               </div>
@@ -806,7 +819,7 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
               )}
               {isAdmin&&(
                 <button style={{...S.btn("light"),padding:"7px 12px",fontSize:11}}
-                  onClick={()=>{setBlockDate("");setShowBlockPicker(true);}}>🔒 Tag sperren</button>
+                  onClick={()=>{setBlockDate("");setShowBlockPicker(true);}}>🚫 Für RB sperren</button>
               )}
               {currentUser.type==="reitbeteiligung"&&(
                 <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}}
@@ -846,7 +859,7 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
             if(myBlocked.length===0) return null;
             return (
               <div style={{marginTop:12,borderTop:"1px solid #f0e8d8",paddingTop:10}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#c0392b",marginBottom:6}}>🚫 Gesperrte Tage</div>
+                <div style={{fontSize:11,fontWeight:700,color:"#c0392b",marginBottom:6}}>🚫 Für RB gesperrte Tage</div>
                 {myBlocked.map(b=>(
                   <div key={b.id} style={{...S.row,justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #f5f0e8"}}>
                     <div>
@@ -929,8 +942,8 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
       {/* Block day modal */}
       {showBlockPicker&&(
         <div style={S.modal}><div style={S.mBox}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>🔒 Tag sperren</div>
-          <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>Die Reitbeteiligung kann an diesem Tag nicht kommen</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,marginBottom:4,color:"#3d2b1f"}}>🚫 Für RB sperren</div>
+          <div style={{fontSize:11,color:"#8b6040",marginBottom:16}}>Dieser Tag wird für die Reitbeteiligung gesperrt</div>
           <label style={S.label}>Datum</label>
           <input type="date" style={S.input} value={blockDate} onChange={e=>setBlockDate(e.target.value)}/>
           <div style={{...S.row,justifyContent:"flex-end",gap:8,marginTop:12}}>
@@ -2246,12 +2259,12 @@ export default function StallApp() {
     setBlockedDays(p=>[...p,{id:row.id,adminId:currentUser.id,date,note}]);
     const {error} = await sb.from("rb_blocked_days").insert(row);
     if(error) { showToast("⚠️ Fehler: "+error.message,"#c0392b"); return; }
-    showToast("🔒 Tag gesperrt!");
+    showToast("🚫 Tag für RB gesperrt!");
   };
   const deleteBlockedDay = async (id) => {
     setBlockedDays(p=>p.filter(d=>d.id!==id));
     await sb.from("rb_blocked_days").delete().eq("id",id);
-    showToast("🔓 Sperrung aufgehoben!");
+    showToast("🔓 Sperrung für RB aufgehoben!");
   };
 
   const addMember = async () => {
