@@ -2064,7 +2064,7 @@ export default function StallApp() {
   const [selDay,         setSelDay]         = useState(null);
   const [rbVisits,       setRbVisits]       = useState([]);
   const [showAddVisit,   setShowAddVisit]   = useState(false);
-  const [newVisit,       setNewVisit]       = useState({date:"",time:"",note:"",isLesson:false});
+  const [newVisit,       setNewVisit]       = useState({date:"",note:"",isLesson:false});
   const [blockedDays,    setBlockedDays]    = useState([]); // [{id, adminId, date, note}]
 
   const weekDates = getWeekDates(weekOffset);
@@ -2105,7 +2105,7 @@ export default function StallApp() {
       setFinMonths(fmObj);
 
       const { data: visitRows } = await sb.from("rb_visits").select("*").order("date").catch(()=>({data:[]}));
-      setRbVisits((visitRows||[]).map(r=>({id:r.id, memberId:r.member_id, date:r.date, time:r.time||"", note:r.note||"", isLesson:r.is_lesson||false})));
+      setRbVisits((visitRows||[]).map(r=>({id:r.id, memberId:r.member_id, date:r.date, note:r.note||"", isLesson:r.is_lesson||false})));
 
       const { data: blockedRows } = await sb.from("rb_blocked_days").select("*").order("date").catch(()=>({data:[]}));
       setBlockedDays((blockedRows||[]).map(r=>({id:r.id, adminId:r.admin_id, date:r.date, note:r.note||""})));
@@ -2129,7 +2129,7 @@ export default function StallApp() {
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_months"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"rb_visits"},async()=>{
         const { data } = await sb.from("rb_visits").select("*").order("date").catch(()=>({data:[]}));
-        setRbVisits((data||[]).map(r=>({id:r.id,memberId:r.member_id,date:r.date,time:r.time||"",note:r.note||"",isLesson:r.is_lesson||false})));
+        setRbVisits((data||[]).map(r=>({id:r.id,memberId:r.member_id,date:r.date,note:r.note||"",isLesson:r.is_lesson||false})));
       })
       .on("postgres_changes",{event:"*",schema:"public",table:"rb_blocked_days"},async()=>{
         const { data } = await sb.from("rb_blocked_days").select("*").order("date").catch(()=>({data:[]}));
@@ -2222,11 +2222,11 @@ export default function StallApp() {
     if(adminId && (blockedDays||[]).some(b=>b.date===newVisit.date&&b.adminId===adminId)) {
       showToast("🔒 Dieser Tag ist gesperrt!","#8e44ad"); return;
     }
-    const row={id:Date.now(), member_id:memberId, date:newVisit.date, time:newVisit.time||null, note:newVisit.note||"", is_lesson:newVisit.isLesson||false};
-    setRbVisits(p=>[...p,{id:row.id,memberId,date:row.date,time:row.time||"",note:row.note,isLesson:row.is_lesson}]);
+    const row={id:Date.now(), member_id:memberId, date:newVisit.date, note:newVisit.note||"", is_lesson:newVisit.isLesson||false};
+    setRbVisits(p=>[...p,{id:row.id,memberId,date:row.date,note:row.note,isLesson:row.is_lesson}]);
     const {error} = await sb.from("rb_visits").insert(row);
     if(error) { showToast("⚠️ Fehler: "+error.message,"#c0392b"); return; }
-    setNewVisit({date:"",time:"",note:"",isLesson:false}); setShowAddVisit(false);
+    setNewVisit({date:"",note:"",isLesson:false}); setShowAddVisit(false);
     showToast("✅ Besuch eingetragen!");
   };
   const deleteRbVisit = async (id) => {
@@ -2234,7 +2234,7 @@ export default function StallApp() {
     await sb.from("rb_visits").delete().eq("id",id);
   };
   const updateRbVisit = async (id, data) => {
-    const row={date:data.date, time:data.time||null, note:data.note||"", is_lesson:data.isLesson||false};
+    const row={date:data.date, note:data.note||"", is_lesson:data.isLesson||false};
     setRbVisits(p=>p.map(v=>v.id===id?{...v,...data}:v));
     await sb.from("rb_visits").update(row).eq("id",id);
     showToast("✅ Besuch aktualisiert!");
@@ -2242,7 +2242,8 @@ export default function StallApp() {
   const addBlockedDay = async (date, note="") => {
     const row={id:Date.now(), admin_id:currentUser.id, date, note};
     setBlockedDays(p=>[...p,{id:row.id,adminId:currentUser.id,date,note}]);
-    await sb.from("rb_blocked_days").insert(row);
+    const {error} = await sb.from("rb_blocked_days").insert(row);
+    if(error) { showToast("⚠️ Fehler: "+error.message,"#c0392b"); return; }
     showToast("🔒 Tag gesperrt!");
   };
   const deleteBlockedDay = async (id) => {
