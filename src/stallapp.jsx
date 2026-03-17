@@ -452,38 +452,50 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             else                { bg="#fff";    border="1px solid #ede5d5"; }
             if(isToday&&!isSelected) border="2px solid #c8913a";
 
-            const mistColor = isSelected?"#fff":"#fff";
             return (
               <div key={info.k}
                 onClick={()=>hasContent&&setSelDay(prev=>prev&&dkl(prev)===info.k?null:day)}
                 style={{aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",
-                  alignItems:"center",justifyContent:"center",gap:1,position:"relative",
-                  cursor:hasContent?"pointer":"default",background:bg,border,transition:"all .15s"}}>
-                <div style={{fontSize:10,fontWeight:isToday?700:400,
+                  alignItems:"center",justifyContent:"space-between",padding:"3px 2px 3px",
+                  position:"relative",cursor:hasContent?"pointer":"default",
+                  background:bg,border,transition:"all .15s"}}>
+                {/* Date number */}
+                <div style={{fontSize:10,fontWeight:isToday?700:400,lineHeight:1,
                   color:isSelected?"#fff":info.myMist?"#fff":blockedRb?"#c0392b":hasLesson?"#8e44ad":hasVisit?"#7d3c98":blockedAdmin?"#c8a0a0":"#2c2416"}}>
                   {day.getDate()}
                 </div>
-                {/* Main icon */}
-                {info.myMist&&!isSelected&&<div style={{fontSize:8,color:"#fff"}}>✓</div>}
-                {!info.myMist&&blockedRb&&<div style={{fontSize:7,color:"#c0392b"}}>🚫</div>}
-                {!info.myMist&&blockedAdmin&&<div style={{fontSize:7,color:"#c8a0a0"}}>⛔</div>}
-                {!info.myMist&&!info.isBlocked&&hasLesson&&<div style={{fontSize:7}}>🎓</div>}
-                {!info.myMist&&!info.isBlocked&&hasVisit&&!hasLesson&&<div style={{fontSize:7}}>🐎</div>}
-                {/* Corner badge when mist overlaps with visit/blocked */}
+                {/* Middle icon */}
+                <div style={{fontSize:8,lineHeight:1,minHeight:8}}>
+                  {info.myMist&&!isSelected&&<span style={{color:"#fff"}}>✓</span>}
+                  {!info.myMist&&blockedRb&&<span style={{color:"#c0392b"}}>🚫</span>}
+                  {!info.myMist&&blockedAdmin&&<span style={{color:"#c8a0a0",fontSize:7}}>⛔</span>}
+                  {!info.myMist&&!info.isBlocked&&hasLesson&&<span>🎓</span>}
+                  {!info.myMist&&!info.isBlocked&&hasVisit&&!hasLesson&&<span>🐎</span>}
+                </div>
+                {/* Corner badge when mist overlaps */}
                 {info.myMist&&(hasVisit||info.isBlocked)&&(
                   <div style={{position:"absolute",top:1,right:2,fontSize:9,lineHeight:1,
                     textShadow:"0 0 3px rgba(0,0,0,0.4)"}}>
                     {blockedRb?"🚫":blockedAdmin?"⛔":hasLesson?"🎓":"🐎"}
                   </div>
                 )}
-                {/* Dots for other events when no visit/blocked override */}
-                {!info.myMist&&!hasVisit&&!info.isBlocked&&getIndicators(info,isSelected)}
-                {/* On mist days, still show event indicators with real colors */}
-                {info.myMist&&!hasVisit&&!info.isBlocked&&info.dayEvts.length>0&&(
-                  <div style={{display:"flex",gap:2,justifyContent:"center",marginTop:1}}>
-                    {info.dayEvts.slice(0,3).map((e,i)=><div key={i} style={{width:4,height:3,borderRadius:2,background:e.color,opacity:0.85,boxShadow:"0 0 2px rgba(0,0,0,0.3)"}}/>)}
-                  </div>
-                )}
+                {/* Bottom bar — always shown when there's content */}
+                <div style={{width:"80%",height:3,borderRadius:2,overflow:"hidden",display:"flex",gap:1}}>
+                  {(()=>{
+                    const bars=[];
+                    if(info.myMist) bars.push("rgba(255,255,255,0.5)");
+                    if(info.myVac)  bars.push("#16a085");
+                    info.dayEvts.slice(0,2).forEach(e=>bars.push(e.color));
+                    if(hasLesson||hasVisit) bars.push("#9b59b6");
+                    if(blockedRb)   bars.push("#c0392b");
+                    if(info.adminVacs?.length>0) bars.push("#b0b0b0");
+                    const unique=[...new Set(bars)].slice(0,3);
+                    if(unique.length===0) return null;
+                    return unique.map((c,i)=>(
+                      <div key={i} style={{flex:1,height:3,borderRadius:2,background:c}}/>
+                    ));
+                  })()}
+                </div>
               </div>
             );
           })}
@@ -500,8 +512,7 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
           )}
           {(isAdmin||(currentUser.type==="reitbeteiligung"))&&(blockedDays||[]).length>0&&(
             <span style={{display:"flex",alignItems:"center",gap:3}}>
-              <span style={{width:8,height:8,borderRadius:2,background:currentUser.type==="reitbeteiligung"?"#c0392b":"#e0b0b0",display:"inline-block"}}/>
-              {currentUser.type==="reitbeteiligung"?"🚫 Gesperrt":"⛔ Gesperrt"}
+              {currentUser.type==="reitbeteiligung"?"🚫":"⛔"} Gesperrt für RB
             </span>
           )}
           {(()=>{
