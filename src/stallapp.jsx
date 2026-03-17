@@ -433,7 +433,6 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             const blockedRb   = info.isBlocked==="rb";
             const blockedAdmin= info.isBlocked==="admin";
             const hasContent  = info.myMist||info.myVac||info.dayEvts.length>0||hasAdminVac||hasVisit||info.isBlocked;
-            const dots        = getDots(info, isSelected);
 
             // Mist = primary background. Visits/blocked = shown via border + corner badge.
             let bg, border;
@@ -490,14 +489,14 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
           })}
         </div>
         <div style={{display:"flex",gap:10,marginTop:10,fontSize:10,color:"#aaa",flexWrap:"wrap"}}>
-          <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c8913a",display:"inline-block"}}/> Mein Mist</span>
-          <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#16a085",display:"inline-block"}}/> Urlaub</span>
-          <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#c0392b",display:"inline-block"}}/> Termin</span>
+          <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:14,height:3,borderRadius:2,background:"#c8913a",display:"inline-block"}}/> Mein Mist</span>
+          <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:14,height:3,borderRadius:2,background:"#16a085",display:"inline-block"}}/> Urlaub</span>
+          <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:14,height:3,borderRadius:2,background:"#c0392b",display:"inline-block"}}/> Termin</span>
           {(currentUser.type==="einsteller"||isAdmin)&&(rbVisits||[]).some(v=>members.find(m=>m.id===v.memberId&&m.einstellerId===currentUser.id))&&(
-            <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#9b59b6",display:"inline-block"}}/> RB-Besuch</span>
+            <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:14,height:3,borderRadius:2,background:"#9b59b6",display:"inline-block"}}/> RB-Besuch</span>
           )}
           {currentUser.type==="reitbeteiligung"&&(rbVisits||[]).some(v=>v.memberId===currentUser.id)&&(
-            <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:"50%",background:"#9b59b6",display:"inline-block"}}/> Mein Besuch</span>
+            <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:14,height:3,borderRadius:2,background:"#9b59b6",display:"inline-block"}}/> Mein Besuch</span>
           )}
           {(isAdmin||(currentUser.type==="reitbeteiligung"))&&(blockedDays||[]).length>0&&(
             <span style={{display:"flex",alignItems:"center",gap:3}}>
