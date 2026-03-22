@@ -102,28 +102,15 @@ const getRbWeekQuota = (root, allMembers, year, month) => {
   return 1;
 };
 const getRbMonthlyQuota = (root, allMembers, vacations, year, month) => {
-  // For fixed_rb admin mode: return direct monthly value (not week-multiplied)
   const mode = root.type==="admin" ? "fixed_rb" : (root.mistMode||"percent");
   if(mode==="fixed_rb") {
-    // Check if any week is vacation (reduce proportionally)
-    const weeks = getWeeksInMonth(year, month);
-    const vacWeeks = weeks.filter(monKey => {
-      const weekEnd = new Date(monKey); weekEnd.setDate(new Date(monKey).getDate()+6);
-      return (vacations[root.id]||[]).some(v=>v.from<=dk(weekEnd)&&v.to>=monKey);
-    }).length;
-    const rbMonthly = root.mistShare??2;
-    if(vacWeeks===0) return rbMonthly;
-    // Pro-rate for vacation weeks
-    return Math.round(rbMonthly * (weeks.length - vacWeeks) / weeks.length);
+    // Return direct monthly value — vacation does NOT reduce quota
+    return root.mistShare??2;
   }
-  // For other modes, sum week quotas as before (but we need member not root here)
   return null; // signals to use normal path
 };
 const getMemberWeekQuota = (member, weekMon, allMembers, vacations) => {
-  const weekEnd = new Date(weekMon); weekEnd.setDate(new Date(weekMon).getDate() + 6);
-  const weekEndKey = dk(weekEnd);
-  const isOnVacation = (vacations[member.id]||[]).some(v=>v.from<=weekEndKey && v.to>=weekMon);
-  if(isOnVacation) return 0;
+  // Note: vacation does NOT reduce quota - it only affects scheduling
   const wDate = new Date(weekMon); const yr = wDate.getFullYear(); const mo = wDate.getMonth();
   if(member.type==="reitbeteiligung") {
     const root = allMembers.find(m=>m.id===member.einstellerId);
@@ -141,7 +128,7 @@ const getMonthlyQuota = (member, allMembers, vacations, year, month) => {
       if(monthly !== null) return monthly;
     }
   }
-  // Default: sum weekly quotas
+  // Default: sum weekly quotas (vacation does NOT reduce quota)
   let total = 0;
   getWeeksInMonth(year, month).forEach(monKey => { total += getMemberWeekQuota(member, monKey, allMembers, vacations); });
   return Math.round(total);
@@ -697,26 +684,36 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
           <div style={S.cTitle}>🌴 Urlaube</div>
           <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}} onClick={()=>openAddVacation(currentUser.id)}>+ Eigenen eintragen</button>
         </div>
-        {(isAdmin?[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")]:[currentUser]).map(m=>{
-          const vacs=vacations[m.id]||[]; const canEdit=isAdmin||currentUser.id===m.id;
-          if(vacs.length===0) return null;
-          return vacs.map(v=>(
-            <div key={v.id} style={{...S.row,justifyContent:"space-between",alignItems:"flex-start",padding:"8px 0",borderBottom:"1px solid #f5f0e8"}}>
-              <div style={{flex:1,minWidth:0}}>
-                {isAdmin&&<div style={{fontSize:12,fontWeight:600,color:"#3d2b1f",marginBottom:2}}>{m.name.split(" ")[0]}</div>}
-                <div style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(v.from+"T00:00:00"))} – {fmtSh(new Date(v.to+"T00:00:00"))}</div>
-                {v.note&&<div style={{fontSize:10,color:"#aaa",marginTop:1}}>{v.note}</div>}
-                {v.mustCover&&<span style={{display:"inline-block",marginTop:3,fontSize:10,fontWeight:700,color:"#e74c3c",background:"#fdf0ee",padding:"1px 6px",borderRadius:10}}>🔴 Vertretung zwingend</span>}
-              </div>
-              {canEdit&&(
-                <div style={{...S.row,gap:4,flexShrink:0,marginLeft:8}}>
-                  <button onClick={()=>openEditVac(m.id,v)} style={{background:"#f0e8d8",border:"none",cursor:"pointer",color:"#8b6040",padding:"4px 8px",borderRadius:6,fontSize:11}}>✏️</button>
-                  <button onClick={()=>deleteVacation(m.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>
+        {(()=>{
+          // Admin: all members | Einsteller: self + own RBs | RB/others: only self
+          const vacMembers = isAdmin
+            ? [...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")]
+            : currentUser.type==="einsteller"
+              ? [currentUser,...members.filter(m=>m.type==="reitbeteiligung"&&m.einstellerId===currentUser.id)]
+              : [currentUser];
+          return vacMembers.map(m=>{
+            const vacs=vacations[m.id]||[];
+            const canEdit=isAdmin||currentUser.id===m.id;
+            const showName=isAdmin||(currentUser.type==="einsteller"&&m.id!==currentUser.id);
+            if(vacs.length===0) return null;
+            return vacs.map(v=>(
+              <div key={v.id} style={{...S.row,justifyContent:"space-between",alignItems:"flex-start",padding:"8px 0",borderBottom:"1px solid #f5f0e8"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  {showName&&<div style={{fontSize:12,fontWeight:600,color:"#3d2b1f",marginBottom:2}}>{m.name.split(" ")[0]}</div>}
+                  <div style={{fontSize:11,color:"#8b6040"}}>{fmtSh(new Date(v.from+"T00:00:00"))} – {fmtSh(new Date(v.to+"T00:00:00"))}</div>
+                  {v.note&&<div style={{fontSize:10,color:"#aaa",marginTop:1}}>{v.note}</div>}
+                  {v.mustCover&&<span style={{display:"inline-block",marginTop:3,fontSize:10,fontWeight:700,color:"#e74c3c",background:"#fdf0ee",padding:"1px 6px",borderRadius:10}}>🔴 Vertretung zwingend</span>}
                 </div>
-              )}
-            </div>
-          ));
-        })}
+                {canEdit&&(
+                  <div style={{...S.row,gap:4,flexShrink:0,marginLeft:8}}>
+                    <button onClick={()=>openEditVac(m.id,v)} style={{background:"#f0e8d8",border:"none",cursor:"pointer",color:"#8b6040",padding:"4px 8px",borderRadius:6,fontSize:11}}>✏️</button>
+                    <button onClick={()=>deleteVacation(m.id,v.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="trash" s={13}/></button>
+                  </div>
+                )}
+              </div>
+            ));
+          });
+        })()}
         {isAdmin&&(
           <div style={{marginTop:8}}>
             <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>Urlaub für andere eintragen:</div>
