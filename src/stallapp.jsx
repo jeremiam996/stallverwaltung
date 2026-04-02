@@ -1187,12 +1187,13 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
           {(()=>{
             const mQ=getMonthlyQuota(currentUser,members,vacations,viewYear,viewMonth);
             const mC=countMistMonth(mistData,currentUser.id,viewYear,viewMonth);
-            // Freeze warning: show when viewing current month and within 7 days of the 7th
-            const isCurrentMonth = viewYear===today.getFullYear() && viewMonth===today.getMonth();
+            const afterSeventh = today.getDate() > 7;
+            const openMonthDate = new Date(today.getFullYear(), today.getMonth() + (afterSeventh ? 2 : 1), 1);
+            const isOpenMonth = viewYear===openMonthDate.getFullYear() && viewMonth===openMonthDate.getMonth();
             const freezeDay = 7;
-            const daysLeft = isCurrentMonth ? freezeDay - today.getDate() : null;
-            const showWarning = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7 && mC < mQ;
-            const freezeDate = new Date(viewYear, viewMonth, freezeDay);
+            const daysLeft = isOpenMonth && !afterSeventh ? freezeDay - today.getDate() : null;
+            const showWarning = daysLeft !== null && daysLeft >= 0 && mC < mQ;
+            const freezeDate = new Date(today.getFullYear(), today.getMonth(), freezeDay);
             const freezeLabel = freezeDate.toLocaleDateString("de-DE",{day:"numeric",month:"long"});
             return (<>
               <div style={{...S.row,justifyContent:"space-between",background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:showWarning?8:12}}>
@@ -2178,18 +2179,28 @@ export default function StallApp() {
   const isMistLocked = (dayKey) => {
     if(isAdmin) return false;
     const [dy,dm] = dayKey.split("-").map(Number);
-    const dayYM = dy*12+(dm-1); const nowYM = today.getFullYear()*12+today.getMonth();
-    if(dayYM>nowYM+1) return true;
-    if(dayYM<nowYM)   return true;
-    if(dayYM===nowYM&&today.getDate()>7) return true;
-    return false;
+    const dayYM = dy*12+(dm-1);
+    const nowYM = today.getFullYear()*12+today.getMonth();
+    const afterSeventh = today.getDate() > 7;
+    // Current month: always locked
+    if(dayYM === nowYM) return true;
+    // Past months: always locked
+    if(dayYM < nowYM) return true;
+    if(!afterSeventh) {
+      // 1.–7.: next month open, everything further locked
+      return dayYM > nowYM+1;
+    } else {
+      // After 7th: next month locked, month after next open, further locked
+      if(dayYM === nowYM+1) return true;
+      return dayYM > nowYM+2;
+    }
   };
 
   const toggleMist = async (dayKey, memberId) => {
     if(!currentUser) return;
     if(!isAdmin&&currentUser.id!==memberId) return;
     if(!isAdmin&&isMistLocked(dayKey)){
-      showToast(today.getDate()>7?"🔒 Eintragungen für diesen Monat sind nach dem 7. gesperrt":"🔒 Nur bis einen Monat im Voraus möglich","#c0392b");
+      showToast(today.getDate()>7?"🔒 Eintragungen nur bis zum 7. des Monats möglich":"🔒 Dieser Monat ist bereits gesperrt","#c0392b");
       return;
     }
     const daySlots=mistData[dayKey]||[]; const alreadyChecked=daySlots.includes(memberId);
