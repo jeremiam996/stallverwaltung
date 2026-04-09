@@ -646,6 +646,8 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
     return false;
   }).sort((a,b)=>a.date.localeCompare(b.date));
   const canAdd = isAdmin || currentUser.type==="einsteller";
+  const todayKey = dk(today);
+  const [showPastEvents, setShowPastEvents] = useState(false);
   return (
     <div>
       <div style={S.card}>
@@ -654,29 +656,52 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
           {canAdd&&<button style={{...S.btn("primary"),padding:"8px 12px"}} onClick={()=>setShowAddEvent(true)}><Ic n="plus" s={16}/></button>}
         </div>
         {!canAdd&&<div style={{background:"#f5f0e8",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#8b6040",marginBottom:12}}>📅 Termine werden von Einstellern und Admin verwaltet</div>}
-        {[...events].sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
-          const canAct = isAdmin || e.createdBy===currentUser.name;
-          return (
-            <div key={e.id} style={{display:"flex",gap:10,marginBottom:12,alignItems:"flex-start"}}>
-              <div style={{width:5,borderRadius:4,background:e.color,alignSelf:"stretch",flexShrink:0,minHeight:40}}/>
-              <div style={{flex:1}}>
-                <div style={{...S.row,justifyContent:"space-between"}}>
-                  <span style={{fontWeight:600,fontSize:14}}>{e.type}</span>
-                  <span style={{fontSize:10,color:"#8b6040"}}>{new Date(e.date+"T00:00:00").toLocaleDateString("de-DE",{day:"2-digit",month:"short",year:"numeric"})}</span>
+        {(()=>{
+          const sorted = [...events].sort((a,b)=>a.date.localeCompare(b.date));
+          const upcoming = sorted.filter(e=>e.date>=todayKey);
+          const past     = sorted.filter(e=>e.date<todayKey);
+          const renderEvent = (e) => {
+            const canAct = isAdmin || e.createdBy===currentUser.name;
+            return (
+              <div key={e.id} style={{display:"flex",gap:10,marginBottom:12,alignItems:"flex-start"}}>
+                <div style={{width:5,borderRadius:4,background:e.color,alignSelf:"stretch",flexShrink:0,minHeight:40}}/>
+                <div style={{flex:1}}>
+                  <div style={{...S.row,justifyContent:"space-between"}}>
+                    <span style={{fontWeight:600,fontSize:14}}>{e.type}</span>
+                    <span style={{fontSize:10,color:"#8b6040"}}>{new Date(e.date+"T00:00:00").toLocaleDateString("de-DE",{day:"2-digit",month:"short",year:"numeric"})}</span>
+                  </div>
+                  {e.time&&<div style={{fontSize:11,color:"#8b6040",marginTop:2}}>🕐 {e.time} Uhr</div>}
+                  {e.note&&<div style={{fontSize:11,color:"#666",marginTop:2}}>{e.note}</div>}
+                  {e.createdBy&&<div style={{fontSize:10,color:"#b89060",marginTop:3}}>👤 {e.createdBy}</div>}
                 </div>
-                {e.time&&<div style={{fontSize:11,color:"#8b6040",marginTop:2}}>🕐 {e.time} Uhr</div>}
-                {e.note&&<div style={{fontSize:11,color:"#666",marginTop:2}}>{e.note}</div>}
-                {e.createdBy&&<div style={{fontSize:10,color:"#b89060",marginTop:3}}>👤 {e.createdBy}</div>}
+                {canAct&&(
+                  <div style={{...S.row,gap:4,flexShrink:0}}>
+                    <button onClick={()=>openEditEvt(e)} style={{background:"#f0e8d8",border:"none",cursor:"pointer",color:"#8b6040",padding:"4px 8px",borderRadius:6,fontSize:11}}>✏️</button>
+                    <button onClick={()=>deleteEvent(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="x" s={14}/></button>
+                  </div>
+                )}
               </div>
-              {canAct&&(
-                <div style={{...S.row,gap:4,flexShrink:0}}>
-                  <button onClick={()=>openEditEvt(e)} style={{background:"#f0e8d8",border:"none",cursor:"pointer",color:"#8b6040",padding:"4px 8px",borderRadius:6,fontSize:11}}>✏️</button>
-                  <button onClick={()=>deleteEvent(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",padding:4}}><Ic n="x" s={14}/></button>
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          };
+          return (<>
+            {upcoming.length===0&&<div style={{fontSize:12,color:"#aaa",marginBottom:8}}>Keine bevorstehenden Termine</div>}
+            {upcoming.map(renderEvent)}
+            {past.length>0&&(
+              <div style={{marginTop:4}}>
+                <button onClick={()=>setShowPastEvents(p=>!p)}
+                  style={{background:"none",border:"none",cursor:"pointer",color:"#aaa",fontSize:11,padding:"4px 0",display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:10}}>{showPastEvents?"▲":"▼"}</span>
+                  {showPastEvents?"Vergangene Termine ausblenden":`${past.length} vergangene Termine`}
+                </button>
+                {showPastEvents&&(
+                  <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #f0e8d8",opacity:0.7}}>
+                    {[...past].reverse().map(renderEvent)}
+                  </div>
+                )}
+              </div>
+            )}
+          </>);
+        })()}
       </div>
 
       <div style={S.card}>
@@ -1187,11 +1212,10 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
           {(()=>{
             const mQ=getMonthlyQuota(currentUser,members,vacations,viewYear,viewMonth);
             const mC=countMistMonth(mistData,currentUser.id,viewYear,viewMonth);
-            const afterSeventh = today.getDate() > 7;
-            const openMonthDate = new Date(today.getFullYear(), today.getMonth() + (afterSeventh ? 2 : 1), 1);
-            const isOpenMonth = viewYear===openMonthDate.getFullYear() && viewMonth===openMonthDate.getMonth();
-            const freezeDay = 7;
-            const daysLeft = isOpenMonth && !afterSeventh ? freezeDay - today.getDate() : null;
+            const nextMonthDate = new Date(today.getFullYear(), today.getMonth()+1, 1);
+            const isNextMonth = viewYear===nextMonthDate.getFullYear() && viewMonth===nextMonthDate.getMonth();
+            const freezeDay = 14;
+            const daysLeft = isNextMonth ? freezeDay - today.getDate() : null;
             const showWarning = daysLeft !== null && daysLeft >= 0 && mC < mQ;
             const freezeDate = new Date(today.getFullYear(), today.getMonth(), freezeDay);
             const freezeLabel = freezeDate.toLocaleDateString("de-DE",{day:"numeric",month:"long"});
@@ -2181,26 +2205,19 @@ export default function StallApp() {
     const [dy,dm] = dayKey.split("-").map(Number);
     const dayYM = dy*12+(dm-1);
     const nowYM = today.getFullYear()*12+today.getMonth();
-    const afterSeventh = today.getDate() > 7;
-    // Current month: always locked
-    if(dayYM === nowYM) return true;
-    // Past months: always locked
-    if(dayYM < nowYM) return true;
-    if(!afterSeventh) {
-      // 1.–7.: next month open, everything further locked
-      return dayYM > nowYM+1;
-    } else {
-      // After 7th: next month locked, month after next open, further locked
-      if(dayYM === nowYM+1) return true;
-      return dayYM > nowYM+2;
-    }
+    // Past and current month: always locked
+    if(dayYM <= nowYM) return true;
+    // Next month: open 1.–14. of current month, locked after 14th
+    if(dayYM === nowYM+1) return today.getDate() > 14;
+    // Everything further: always locked
+    return true;
   };
 
   const toggleMist = async (dayKey, memberId) => {
     if(!currentUser) return;
     if(!isAdmin&&currentUser.id!==memberId) return;
     if(!isAdmin&&isMistLocked(dayKey)){
-      showToast(today.getDate()>7?"🔒 Eintragungen nur bis zum 7. des Monats möglich":"🔒 Dieser Monat ist bereits gesperrt","#c0392b");
+      showToast(today.getDate()>14?"🔒 Eintragungen nur bis zum 14. des Monats möglich":"🔒 Dieser Monat ist bereits gesperrt","#c0392b");
       return;
     }
     const daySlots=mistData[dayKey]||[]; const alreadyChecked=daySlots.includes(memberId);
