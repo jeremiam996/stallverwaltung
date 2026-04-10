@@ -616,6 +616,7 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
   const [editVisitForm, setEditVisitForm] = useState({date:"",note:"",isLesson:false});
   const [showPastVacations, setShowPastVacations] = useState(false);
   const [showPastEvents, setShowPastEvents] = useState(false);
+  const [showBlockPicker, setShowBlockPicker] = useState(false);
   const [blockDate, setBlockDate] = useState("");
 
   const openEditVac = (memberId, vac) => { setEditVac({memberId,vac}); setEditForm({from:vac.from,to:vac.to,note:vac.note,mustCover:vac.mustCover||false}); };
