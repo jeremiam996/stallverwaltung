@@ -614,7 +614,7 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
   const [editEvtForm, setEditEvtForm] = useState({type:"",date:"",time:"",note:""});
   const [editVisit, setEditVisit] = useState(null);
   const [editVisitForm, setEditVisitForm] = useState({date:"",note:"",isLesson:false});
-  const [showBlockPicker, setShowBlockPicker] = useState(false);
+  const [showPastVacations, setShowPastVacations] = useState(false);
   const [blockDate, setBlockDate] = useState("");
 
   const openEditVac = (memberId, vac) => { setEditVac({memberId,vac}); setEditForm({from:vac.from,to:vac.to,note:vac.note,mustCover:vac.mustCover||false}); };
@@ -710,18 +710,16 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
           <button style={{...S.btn("teal"),padding:"7px 12px",fontSize:11}} onClick={()=>openAddVacation(currentUser.id)}>+ Eigenen eintragen</button>
         </div>
         {(()=>{
-          // Admin: all members | Einsteller: self + own RBs | RB/others: only self
           const vacMembers = isAdmin
             ? [...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")]
             : currentUser.type==="einsteller"
               ? [currentUser,...members.filter(m=>m.type==="reitbeteiligung"&&m.einstellerId===currentUser.id)]
               : [currentUser];
-          return vacMembers.map(m=>{
-            const vacs=vacations[m.id]||[];
+          const todayStr = dk(today);
+          const renderVac = (m, v) => {
             const canEdit=isAdmin||currentUser.id===m.id;
             const showName=isAdmin||(currentUser.type==="einsteller"&&m.id!==currentUser.id);
-            if(vacs.length===0) return null;
-            return vacs.map(v=>(
+            return (
               <div key={v.id} style={{...S.row,justifyContent:"space-between",alignItems:"flex-start",padding:"8px 0",borderBottom:"1px solid #f5f0e8"}}>
                 <div style={{flex:1,minWidth:0}}>
                   {showName&&<div style={{fontSize:12,fontWeight:600,color:"#3d2b1f",marginBottom:2}}>{m.name.split(" ")[0]}</div>}
@@ -736,8 +734,29 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
                   </div>
                 )}
               </div>
-            ));
-          });
+            );
+          };
+          const allVacs = vacMembers.flatMap(m=>(vacations[m.id]||[]).map(v=>({m,v})));
+          const upcoming = allVacs.filter(({v})=>v.to>=todayStr).sort((a,b)=>a.v.from.localeCompare(b.v.from));
+          const past     = allVacs.filter(({v})=>v.to<todayStr).sort((a,b)=>b.v.from.localeCompare(a.v.from));
+          return (<>
+            {upcoming.length===0&&<div style={{fontSize:12,color:"#aaa",marginBottom:4}}>Keine bevorstehenden Urlaube</div>}
+            {upcoming.map(({m,v})=>renderVac(m,v))}
+            {past.length>0&&(
+              <div style={{marginTop:4}}>
+                <button onClick={()=>setShowPastVacations(p=>!p)}
+                  style={{background:"none",border:"none",cursor:"pointer",color:"#aaa",fontSize:11,padding:"4px 0",display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:10}}>{showPastVacations?"▲":"▼"}</span>
+                  {showPastVacations?"Vergangene Urlaube ausblenden":`${past.length} vergangene Urlaube`}
+                </button>
+                {showPastVacations&&(
+                  <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #f0e8d8",opacity:0.7}}>
+                    {past.map(({m,v})=>renderVac(m,v))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>);
         })()}
         {isAdmin&&(
           <div style={{marginTop:8}}>
