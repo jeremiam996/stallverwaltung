@@ -615,6 +615,7 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
   const [editVisit, setEditVisit] = useState(null);
   const [editVisitForm, setEditVisitForm] = useState({date:"",note:"",isLesson:false});
   const [showPastVacations, setShowPastVacations] = useState(false);
+  const [showPastEvents, setShowPastEvents] = useState(false);
   const [blockDate, setBlockDate] = useState("");
 
   const openEditVac = (memberId, vac) => { setEditVac({memberId,vac}); setEditForm({from:vac.from,to:vac.to,note:vac.note,mustCover:vac.mustCover||false}); };
@@ -647,7 +648,6 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
   }).sort((a,b)=>a.date.localeCompare(b.date));
   const canAdd = isAdmin || currentUser.type==="einsteller";
   const todayKey = dk(today);
-  const [showPastEvents, setShowPastEvents] = useState(false);
   return (
     <div>
       <div style={S.card}>
