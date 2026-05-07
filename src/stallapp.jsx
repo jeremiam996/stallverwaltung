@@ -165,7 +165,7 @@ const S = {
   hSub:    { color:"#b89060", fontSize:11, marginTop:2, fontWeight:300 },
   nav:     { display:"flex", overflowX:"auto", background:"#2c1e0f" },
   navBtn:  a=>({ flex:"0 0 auto", padding:"10px 13px", fontSize:11, fontWeight:500, border:"none", cursor:"pointer", background:a?"#c8913a":"transparent", color:a?"#fff":"#a07848", borderBottom:a?"3px solid #f5c842":"3px solid transparent", whiteSpace:"nowrap" }),
-  card:    { background:"#fff", borderRadius:14, margin:"14px 16px 0", padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,.07)" },
+  card:    { background:"#fff", borderRadius:14, margin:"14px 16px 0", padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,.07)", overflow:"hidden" },
   cTitle:  { fontFamily:"'Playfair Display',serif", fontSize:16, fontWeight:700, marginBottom:12, color:"#3d2b1f" },
   btn:     v=>({ padding:"10px 18px", borderRadius:10, border:"none", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:13, background:v==="primary"?"#c8913a":v==="danger"?"#c0392b":v==="green"?"#27ae60":v==="teal"?"#16a085":"#f0e6d3", color:v==="light"?"#3d2b1f":"#fff" }),
   input:   { width:"100%", padding:"10px 12px", borderRadius:9, border:"1.5px solid #e2d5c0", background:"#faf6f0", fontFamily:"'DM Sans',sans-serif", fontSize:13, color:"#2c2416", boxSizing:"border-box", marginBottom:8 },
@@ -402,12 +402,12 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
 
       {/* Mini Month Calendar */}
       <div style={S.card}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(0,1fr))",gap:2,marginBottom:4}}>
           {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
             <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700}}>{d}</div>
           ))}
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(0,1fr))",gap:2}}>
           {Array.from({length:leadingBlanks}).map((_,i)=><div key={"b"+i}/>)}
           {calDays.map(day=>{
             const info        = getDayInfo(day);
@@ -1262,9 +1262,9 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               )}
             </>);
           })()}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:6}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(0,1fr))",gap:2,marginBottom:6}}>
             {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
-              <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700,paddingBottom:4}}>{d}</div>
+              <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700,paddingBottom:3}}>{d}</div>
             ))}
             {Array.from({length:(new Date(viewYear,viewMonth,1).getDay()||7)-1}).map((_,i)=><div key={"e"+i}/>)}
             {daysInMonth().map(d=>{
@@ -1409,7 +1409,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               </div>
               <button style={{...S.btn("light"),padding:"6px 12px",fontSize:18}} onClick={()=>setMonthOffset(o=>o+1)}>›</button>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:8}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(0,1fr))",gap:2,marginBottom:8}}>
               {["Mo","Di","Mi","Do","Fr","Sa","So"].map(d=>(
                 <div key={d} style={{textAlign:"center",fontSize:9,color:"#8b6040",fontWeight:700,paddingBottom:3}}>{d}</div>
               ))}
