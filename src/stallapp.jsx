@@ -137,8 +137,8 @@ const countMistMonth = (mistData, memberId, year, month) => {
   let count = 0;
   getWeeksInMonth(year, month).forEach(monKey => {
     for(let i=0;i<7;i++){
-      const d = new Date(monKey); d.setDate(d.getDate()+i);
-      count += (mistData[dk(d)]||[]).includes(memberId) ? 1 : 0;
+      const d = new Date(monKey+"T00:00:00"); d.setDate(d.getDate()+i);
+      count += (mistData[dkl(d)]||[]).includes(memberId) ? 1 : 0;
     }
   });
   return count;
