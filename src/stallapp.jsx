@@ -47,7 +47,7 @@ const getWeeksInMonth = (year, month) => {
     const dow = d.getDay() || 7;
     const mon = new Date(d); mon.setDate(d.getDate() - dow + 1);
     const thu = new Date(mon); thu.setDate(mon.getDate() + 3);
-    const monKey = dk(mon);
+    const monKey = dkl(mon);
     if(thu.getFullYear()===year && thu.getMonth()===month && !weeks.includes(monKey)) weeks.push(monKey);
     d.setDate(d.getDate() + 1);
   }
