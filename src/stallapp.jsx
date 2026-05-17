@@ -135,12 +135,11 @@ const getMonthlyQuota = (member, allMembers, vacations, year, month) => {
 };
 const countMistMonth = (mistData, memberId, year, month) => {
   let count = 0;
-  getWeeksInMonth(year, month).forEach(monKey => {
-    for(let i=0;i<7;i++){
-      const d = new Date(monKey+"T00:00:00"); d.setDate(d.getDate()+i);
-      count += (mistData[dkl(d)]||[]).includes(memberId) ? 1 : 0;
-    }
-  });
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  for(let day=1; day<=daysInMonth; day++){
+    const k = dkl(new Date(year, month, day));
+    count += (mistData[k]||[]).includes(memberId) ? 1 : 0;
+  }
   return count;
 };
 const isOnVacationDay = (memberId, dayKey, vacations) =>
