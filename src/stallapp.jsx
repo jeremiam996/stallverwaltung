@@ -375,10 +375,10 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
           <div style={S.cTitle}>Mein Überblick</div>
           <div style={{...S.row,justifyContent:"space-between",marginBottom:8}}>
             <div>
-              <div style={{fontSize:13}}>🧹 Mistdienst: <b style={{color:mC>=mQ?"#27ae60":"#c0392b"}}>{mC}/{mQ}×{mC>mQ?" 🌟":""}</b></div>
+              <div style={{fontSize:13}}>🧹 Mistdienst: <b style={{color:mC===mQ?"#27ae60":"#c0392b"}}>{mC}/{mQ}×{mC>mQ?" 🌟":""}</b></div>
               <div style={{fontSize:11,color:"#aaa",marginTop:2}}>Aufgeteilt mit {members.filter(m=>m.einstellerId===currentUser.id).length} Reitbet.</div>
             </div>
-            {mC>=mQ?<span style={{color:"#27ae60",fontWeight:700,fontSize:12}}>✓ Erledigt!</span>:<span style={{color:"#c0392b",fontWeight:700,fontSize:12}}>Noch offen</span>}
+            {mC===mQ?<span style={{color:"#27ae60",fontWeight:700,fontSize:12}}>✓ Erledigt!</span>:mC>mQ?<span style={{color:"#c0392b",fontWeight:700,fontSize:12}}>🌟 Über Soll</span>:<span style={{color:"#c0392b",fontWeight:700,fontSize:12}}>Noch offen</span>}
           </div>
           {currentUser.type!=="reitbeteiligung"&&(()=>{
             const hFm    = getFinMonth(currentUser.id, viewYear, viewMonth);
@@ -1242,7 +1242,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               <div style={{...S.row,justifyContent:"space-between",background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:showWarning?8:12}}>
                 <div>
                   <div style={{fontSize:12,color:"#8b6040"}}>Mein Monatssoll</div>
-                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:mC>=mQ?"#27ae60":"#c0392b",fontWeight:700}}>{mC}<span style={{fontSize:13,color:"#aaa"}}>/{mQ}×</span>{mC>mQ&&<span style={{fontSize:12,color:"#c8913a",marginLeft:4}}>🌟</span>}</div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:mC===mQ?"#27ae60":"#c0392b",fontWeight:700}}>{mC}<span style={{fontSize:13,color:"#aaa"}}>/{mQ}×</span>{mC>mQ&&<span style={{fontSize:12,color:"#c0392b",marginLeft:4}}>🌟</span>}</div>
                 </div>
                 <div style={{fontSize:24}}>{mC>=mQ?"✅":"⏳"}</div>
               </div>
@@ -1354,7 +1354,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               const mYear=weekDates[0].getFullYear(); const mMonth=weekDates[0].getMonth();
               const monthQ=getMonthlyQuota(m,members,vacations,mYear,mMonth);
               const monthC=countMistMonth(mistData,m.id,mYear,mMonth);
-              const ok=monthC>=monthQ;
+              const ok=monthC===monthQ;
               const onVacWeek=getMemberWeekQuota(m,dk(weekDates[0]),members,vacations)===0;
               const isMe=currentUser.id===m.id;
               return (
@@ -1364,7 +1364,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                       {isChild&&<div style={{fontSize:8,color:"#b89060",marginBottom:1}}>↳ Beteil.</div>}
                       <div style={{fontSize:11,fontWeight:isMe?700:500,color:isMe?"#c8913a":"#2c2416",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name.split(" ")[0]}</div>
                       {m.type==="admin"&&m.einstellerId===null?null:onVacWeek?<div style={{fontSize:9,color:"#16a085",fontWeight:600}}>🌴 Urlaub</div>
-                        :<div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{monthC}/{monthQ}Mo</div>}
+                        :<div style={{fontSize:9,color:ok?"#27ae60":"#c0392b",fontWeight:600}}>{monthC}/{monthQ}Mo{monthC>monthQ?" 🌟":""}</div>}
                     </div>
                     {weekDates.map(d=>{
                       const k=dkl(d); const checked=(mistData[k]||[]).includes(m.id);
@@ -1456,10 +1456,10 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                   <div key={m.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",paddingLeft:isChild?12:0,borderBottom:"1px solid #f5f0e8"}}>
                     <div>
                       {isChild&&<span style={{fontSize:9,color:"#b89060"}}>↳ </span>}
-                      <span style={{fontSize:12,fontWeight:mC>=mQ?400:600,color:mC>=mQ?"#aaa":"#2c2416"}}>{m.name.split(" ")[0]} {m.name.split(" ")[1]?.charAt(0)}.</span>
+                      <span style={{fontSize:12,fontWeight:mC===mQ?400:600,color:mC===mQ?"#aaa":"#2c2416"}}>{m.name.split(" ")[0]} {m.name.split(" ")[1]?.charAt(0)}.</span>
                       {(vacations[m.id]||[]).length>0&&<span style={{fontSize:10}}> 🌴</span>}
                     </div>
-                    <span style={{fontSize:11,fontWeight:700,color:mC>=mQ?"#27ae60":"#c0392b",background:mC>=mQ?"#d5f5e3":"#fdecea",padding:"3px 8px",borderRadius:20}}>{`${mC}/${mQ}×`}{mC>=mQ&&" ✓"}</span>
+                    <span style={{fontSize:11,fontWeight:700,color:mC===mQ?"#27ae60":"#c0392b",background:mC===mQ?"#d5f5e3":"#fdecea",padding:"3px 8px",borderRadius:20}}>{`${mC}/${mQ}×`}{mC===mQ&&" ✓"}{mC>mQ&&" 🌟"}</span>
                   </div>
                 );
               })}
@@ -1476,10 +1476,10 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                       <div key={rb.id} style={{...S.row,justifyContent:"space-between",padding:"6px 0",paddingLeft:12,borderBottom:"1px solid #f5f0e8"}}>
                         <div>
                           <span style={{fontSize:9,color:"#b89060"}}>↳ </span>
-                          <span style={{fontSize:12,fontWeight:mC>=mQ?400:600,color:mC>=mQ?"#aaa":"#2c2416"}}>{rb.name.split(" ")[0]} {rb.name.split(" ")[1]?.charAt(0)}.</span>
+                          <span style={{fontSize:12,fontWeight:mC===mQ?400:600,color:mC===mQ?"#aaa":"#2c2416"}}>{rb.name.split(" ")[0]} {rb.name.split(" ")[1]?.charAt(0)}.</span>
                           {(vacations[rb.id]||[]).length>0&&<span style={{fontSize:10}}> 🌴</span>}
                         </div>
-                        <span style={{fontSize:11,fontWeight:700,color:mC>=mQ?"#27ae60":"#c0392b",background:mC>=mQ?"#d5f5e3":"#fdecea",padding:"3px 8px",borderRadius:20}}>{`${mC}/${mQ}×`}{mC>=mQ&&" ✓"}</span>
+                        <span style={{fontSize:11,fontWeight:700,color:mC===mQ?"#27ae60":"#c0392b",background:mC===mQ?"#d5f5e3":"#fdecea",padding:"3px 8px",borderRadius:20}}>{`${mC}/${mQ}×`}{mC===mQ&&" ✓"}{mC>mQ&&" 🌟"}</span>
                       </div>
                     );
                   })}
@@ -2369,6 +2369,13 @@ export default function StallApp() {
   };
   const calcCarryover = (memberId, year, month) => {
     try {
+      // Use stored carryover from DB (set when payment was saved) to avoid
+      // recalculation issues when basefee changes retroactively
+      const fm = getFinMonth(memberId, year, month);
+      if(fm.carryover !== undefined && fm.carryover !== null && fm.carryover !== 0) {
+        return Number(fm.carryover);
+      }
+      // Fallback: live calculation for months where no carryover was stored
       let pm = month - 1, py = year;
       if(pm < 0) { pm = 11; py--; }
       const prevFm = getFinMonth(memberId, py, pm);
