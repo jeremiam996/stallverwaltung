@@ -2369,21 +2369,21 @@ export default function StallApp() {
   };
   const calcCarryover = (memberId, year, month) => {
     try {
-      // Use stored carryover from DB (set when payment was saved) to avoid
-      // recalculation issues when basefee changes retroactively
+      // Check stored carryover in DB first (set when payment was saved)
       const fm = getFinMonth(memberId, year, month);
       if(fm.carryover !== undefined && fm.carryover !== null && fm.carryover !== 0) {
         return Number(fm.carryover);
       }
-      // Fallback: live calculation for months where no carryover was stored
+      // Fallback: live calc — only if prev month was paid
       let pm = month - 1, py = year;
       if(pm < 0) { pm = 11; py--; }
       const prevFm = getFinMonth(memberId, py, pm);
       if(prevFm.payment === null || prevFm.payment === undefined) return 0;
-      const prevBase = getBaseFee(memberId);
-      const prevExtras = (prevFm.extras||[]).reduce((a,e)=>a+Number(e.amount||0),0);
-      const prevCarry = calcCarryoverRaw(memberId, py, pm);
-      const prevTotal = prevBase + prevExtras + prevCarry;
+      // Use prev month's stored carryover + extras + basefee to reconstruct prev total
+      const prevBase    = getBaseFee(memberId);
+      const prevExtras  = (prevFm.extras||[]).reduce((a,e)=>a+Number(e.amount||0),0);
+      const prevCarry   = Number(prevFm.carryover||0);
+      const prevTotal   = prevBase + prevExtras + prevCarry;
       return Number((prevTotal - Number(prevFm.payment)).toFixed(2));
     } catch(e) { return 0; }
   };
