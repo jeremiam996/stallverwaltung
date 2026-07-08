@@ -1681,21 +1681,15 @@ function FinanzenScreen({ currentUser, isAdmin, members, finMonths, finAccounts,
     const pay = directAmount !== undefined ? directAmount : parseFloat(editPay[memberId]);
     if(isNaN(pay)) return;
     const total = calcTotal(memberId, viewYear, viewMonth);
-    let diff = pay - total;
+    const diff = pay - total;
     await saveFinMonth(memberId, viewYear, viewMonth, {payment:pay});
     let nm=viewMonth+1, ny=viewYear;
     if(nm>11){nm=0;ny++;}
-    // Replace carryover (don't accumulate — corrections would double-count)
-    // diff = pay - total: negative means underpaid (surcharge next month), positive means overpaid (discount next month)
-    // carryover is ADDED to next month's total, so sign stays: underpaid = negative carryover WRONG
-    // Actually: carryover added to total means: -20 carryover → total goes DOWN → wrong
-    // We need: underpaid (diff=-20) → next month total goes UP → carryover = -diff = +20... 
-    // BUT: overpaid (diff=+20) → next month total goes DOWN → carryover = -diff = -20
-    // So: carryover = -diff (negate)
-    await saveFinMonth(memberId, ny, nm, {carryover: Number((-diff).toFixed(2))});
+    // carryover for next month = -(diff): underpaid → positive (surcharge), overpaid → negative (discount)
+    const nextCarry = Number((-diff).toFixed(2));
+    await saveFinMonth(memberId, ny, nm, {carryover: nextCarry});
     if(directAmount===undefined) setEditPay(p=>({...p,[memberId]:undefined}));
-    const carryover = -diff;
-    showToast(diff!==0?`💾 Zahlung gespeichert · Nächster Monat: ${carryover>0?"+":""}${carryover.toFixed(2)}€`:"💾 Zahlung gespeichert!");
+    showToast(diff!==0?`💾 Zahlung gespeichert · Nächster Monat: ${nextCarry>0?"+":""}${nextCarry.toFixed(2)}€`:"💾 Zahlung gespeichert!");
   };
 
   const handleAddExtra = async (memberId) => {
