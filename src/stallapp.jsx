@@ -1055,7 +1055,7 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
     setOpen(false);
   };
 
-  const MODES = isAdminUser ? [] : [
+  const MODES = [
     { key:"percent",  label:"% Aufteilung",    icon:"⚖️" },
     { key:"fixed_e",  label:"Meine Dienste",   icon:"🐴" },
     { key:"fixed_rb", label:"Reitbet. Dienste",icon:"🤝" },
@@ -1114,32 +1114,29 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
             {isAdminUser ? "Mistdienste Reitbeteiligung" : "Aufteilung anpassen"}
           </div>
 
-          {/* Mode selector — only for non-admin */}
-          {!isAdminUser&&(
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:18}}>
-              {MODES.map(m=>(
-                <button key={m.key} onClick={()=>{ setMode(m.key); setValue(m.key==="percent"?Math.round((currentUser.mistShare??50)/10)*10:m.key==="fixed_e"?Math.round(totalMonthly/2):Math.round(totalMonthly/2/rbs.length)); }}
-                  style={{padding:"10px 4px",borderRadius:10,border:`2px solid ${mode===m.key?"#c8913a":"#e2d5c0"}`,
-                    background:mode===m.key?"#fef3e2":"#fff",cursor:"pointer",textAlign:"center",
-                    color:mode===m.key?"#c8913a":"#8b6040",fontSize:10,fontWeight:mode===m.key?700:400,transition:"all .15s"}}>
-                  <div style={{fontSize:16,marginBottom:3}}>{m.icon}</div>
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Mode selector */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:18}}>
+            {MODES.map(m=>(
+              <button key={m.key} onClick={()=>{ setMode(m.key); setValue(m.key==="percent"?Math.round((currentUser.mistShare??50)/10)*10:m.key==="fixed_e"?Math.round(totalMonthly/2):Math.round(totalMonthly/2/rbs.length)); }}
+                style={{padding:"10px 4px",borderRadius:10,border:`2px solid ${mode===m.key?"#c8913a":"#e2d5c0"}`,
+                  background:mode===m.key?"#fef3e2":"#fff",cursor:"pointer",textAlign:"center",
+                  color:mode===m.key?"#c8913a":"#8b6040",fontSize:10,fontWeight:mode===m.key?700:400,transition:"all .15s"}}>
+                <div style={{fontSize:16,marginBottom:3}}>{m.icon}</div>
+                {m.label}
+              </button>
+            ))}
+          </div>
 
           {/* Mode description */}
           <div style={{fontSize:11,color:"#8b6040",background:"#faf6f0",borderRadius:8,padding:"8px 12px",marginBottom:16}}>
-            {isAdminUser && `Wie viele Mistdienste soll die Reitbeteiligung pro Monat erledigen?`}
-            {!isAdminUser&&mode==="percent" && "Aufteilung in Prozent — passt sich automatisch an Monate mit mehr/weniger Wochen an."}
-            {!isAdminUser&&mode==="fixed_e" && "Ich mache jeden Monat genau X Dienste — der Rest geht an die Reitbeteiligung."}
-            {!isAdminUser&&mode==="fixed_rb" && "Die Reitbeteiligung macht jeden Monat genau X Dienste — der Rest geht an mich."}
+            {mode==="percent"  && "Aufteilung in Prozent — passt sich automatisch an Monate mit mehr/weniger Wochen an."}
+            {mode==="fixed_e"  && "Ich mache jeden Monat genau X Dienste — der Rest geht an die Reitbeteiligung."}
+            {mode==="fixed_rb" && "Die Reitbeteiligung macht jeden Monat genau X Dienste — der Rest geht an mich."}
           </div>
 
           {/* Visual split bar */}
           <div style={{height:10,borderRadius:10,overflow:"hidden",display:"flex",marginBottom:16,background:"#f0e8d8"}}>
-            {!isAdminUser&&<div style={{flex:preview.my||0.001,background:"#c8913a",transition:"flex .2s",borderRadius:preview.my===0?"0":"10px 0 0 10px"}}/>}
+            <div style={{flex:preview.my||0.001,background:"#c8913a",transition:"flex .2s",borderRadius:preview.my===0?"0":"10px 0 0 10px"}}/>
             <div style={{flex:preview.rb||0.001,background:"#a8d8c8",transition:"flex .2s",borderRadius:isAdminUser||preview.my===0?"10px":"0 10px 10px 0"}}/>
           </div>
 
@@ -1147,13 +1144,12 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
           <div style={{...S.row,justifyContent:"space-between",alignItems:"center",marginBottom:12,padding:"12px 14px",background:"#f0faf6",borderRadius:10,border:"1.5px solid #a8d8c8"}}>
             <div>
               <div style={{fontSize:13,fontWeight:700,color:"#3d2b1f"}}>
-                {isAdminUser ? "Dienste RB / Monat" : mode==="percent"?"Mein Anteil":mode==="fixed_e"?"Meine Dienste / Monat":"Dienste RB / Monat"}
+                {mode==="percent"?"Mein Anteil":mode==="fixed_e"?"Meine Dienste / Monat":"Dienste RB / Monat"}
               </div>
               <div style={{fontSize:11,color:"#8b6040",marginTop:2}}>
-                {isAdminUser && `${rbs.map(rb=>rb.name.split(" ")[0]).join(" & ")} je ${value}× im ${monthLabel}`}
-                {!isAdminUser&&mode==="percent" && `= ${preview.my} Dienste im ${monthLabel}`}
-                {!isAdminUser&&mode==="fixed_e" && `RB bekommt ${preview.rb} Dienste im ${monthLabel}`}
-                {!isAdminUser&&mode==="fixed_rb" && `Ich mache ${preview.my} Dienste im ${monthLabel}`}
+                {mode==="percent"  && `= ${preview.my} Dienste im ${monthLabel}`}
+                {mode==="fixed_e"  && `RB bekommt ${preview.rb} Dienste im ${monthLabel}`}
+                {mode==="fixed_rb" && `Ich mache ${preview.my} Dienste im ${monthLabel}`}
               </div>
             </div>
             <div style={{...S.row,gap:10,alignItems:"center"}}>
@@ -1171,12 +1167,10 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
 
           {/* Result preview */}
           <div style={{...S.row,gap:6,marginBottom:16}}>
-            {!isAdminUser&&(
-              <div style={{flex:1,textAlign:"center",padding:"8px",background:"#fef3e2",borderRadius:8,border:"1px solid #c8913a"}}>
-                <div style={{fontSize:10,color:"#8b6040"}}>Du ({monthLabel})</div>
-                <div style={{fontSize:18,fontWeight:700,color:"#c8913a"}}>{preview.my}×</div>
-              </div>
-            )}
+            <div style={{flex:1,textAlign:"center",padding:"8px",background:"#fef3e2",borderRadius:8,border:"1px solid #c8913a"}}>
+              <div style={{fontSize:10,color:"#8b6040"}}>Du ({monthLabel})</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#c8913a"}}>{preview.my}×</div>
+            </div>
             {rbs.map(rb=>(
               <div key={rb.id} style={{flex:1,textAlign:"center",padding:"8px",background:"#f0faf6",borderRadius:8,border:"1px solid #a8d8c8"}}>
                 <div style={{fontSize:10,color:"#16a085"}}>{rb.name.split(" ")[0]}</div>
