@@ -1343,11 +1343,11 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                 </button>
               )}
               <button onClick={()=>{
-                const next = extendedDeadline ? Math.min(28, extendedDeadline+1) : 15;
+                const next = extendedDeadline ? Math.min(28, extendedDeadline+7) : 21;
                 setExtendedDeadline(next);
               }}
                 style={{...S.btn("primary"),padding:"5px 12px",fontSize:11}}>
-                {extendedDeadline ? `+1 Tag (${Math.min(28,extendedDeadline+1)}.)` : "Verlängern"}
+                {extendedDeadline ? `+1 Woche (bis ${Math.min(28,extendedDeadline+7)}.)` : "Verlängern"}
               </button>
             </div>
           </div>
