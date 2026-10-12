@@ -436,7 +436,7 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             else if(hasLesson)  { bg="#f0e8fa"; border="2px solid #8e44ad"; }
             else if(hasVisit)   { bg="#f3eafa"; border="1.5px solid #9b59b6"; }
             else                { bg="#fff";    border="1px solid #ede5d5"; }
-            if(isToday&&!isSelected) border="2px solid #c8913a";
+            if(isToday&&!isSelected) border="3px solid #e67e22";
 
             return (
               <div key={info.k}
@@ -1278,7 +1278,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               else if(takenByOther){ bg="#fdecea"; border="2px solid #f5c0c0"; }
               else if(locked)      { bg="#f5f0e8"; border="1px solid #e2d5c0"; }
               else                 { bg="#fff";    border="1px solid #e2d5c0"; }
-              if(isToday)          { border="2.5px solid #c8913a"; }
+              if(isToday)          { border="3px solid #e67e22"; }
               return (
                 <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
                   style={{
@@ -1420,8 +1420,8 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                   <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
                     style={{aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                     background:myEntry?"#3d2b1f":hasEntry?"#c8913a":someoneOnVac?"#f0faf6":isPast?"#f5f0e8":"#fff",
-                    border:isToday?"2.5px solid #c8913a":myEntry?"2px solid #3d2b1f":hasEntry?"2px solid #a07030":someoneOnVac?"1px solid #a8d8c8":"1px solid #e2d5c0",
-                    boxShadow:isToday?"0 0 0 1px #c8913a44":undefined,
+                    border:isToday?"3px solid #e67e22":myEntry?"2px solid #3d2b1f":hasEntry?"2px solid #a07030":someoneOnVac?"1px solid #a8d8c8":"1px solid #e2d5c0",
+                    boxShadow:isToday?"0 0 0 3px #e67e2244":undefined,
                     cursor:canClick?"pointer":"default",transition:"all .15s"}}>
                     <div style={{fontSize:10,fontWeight:isToday?700:400,color:(hasEntry||myEntry)?"#fff":someoneOnVac?"#16a085":"#2c2416"}}>{d.getDate()}</div>
                     {myEntry&&<div style={{fontSize:7,color:"#f5c842",fontWeight:700}}>✓ Ich</div>}
