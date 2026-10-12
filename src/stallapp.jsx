@@ -1190,7 +1190,8 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
 }
 
 function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einstellerList, weekDates, weekOffset, setWeekOffset, toggleMist, isMistLocked, saveMemberEdit, showToast, mistDeadline, extendedDeadline, setExtendedDeadline }) {
-  const [adminView,   setAdminView]   = useState("month");
+  const [adminView,        setAdminView]        = useState("month");
+  const [adminEditMember,  setAdminEditMember]  = useState(null); // memberId the admin is editing in month view
   const [monthOffset, setMonthOffset] = useState(0);
 
   const viewDate  = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
@@ -1327,6 +1328,29 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
             <button onClick={()=>setAdminView("month")} style={{...S.btn(adminView==="month"?"primary":"light"),padding:"6px 16px",fontSize:12}}>📆 Monat</button>
           </div>
 
+          {/* Admin: quick edit for any member */}
+          {isAdmin&&(()=>{
+            const allMembers=[...einstellerList.filter(m=>m.type!=="admin"),...members.filter(m=>m.type==="reitbeteiligung")];
+            if(allMembers.length===0) return null;
+            return (
+              <div style={{background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:10,border:"1px solid #e2d5c0"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f",marginBottom:8}}>✏️ Kurzfristig eintragen für:</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  <button onClick={()=>setAdminEditMember(null)}
+                    style={{...S.btn(adminEditMember===null?"primary":"light"),padding:"5px 10px",fontSize:11}}>
+                    Ich (Admin)
+                  </button>
+                  {allMembers.map(m=>(
+                    <button key={m.id} onClick={()=>setAdminEditMember(m.id)}
+                      style={{...S.btn(adminEditMember===m.id?"primary":"light"),padding:"5px 10px",fontSize:11}}>
+                      {m.name.split(" ")[0]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Admin: extend entry deadline */}
           <div style={{...S.row,justifyContent:"space-between",alignItems:"center",background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:14,border:"1px solid #e2d5c0"}}>
             <div>
@@ -1436,20 +1460,20 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               {daysInMonth().map(d=>{
                 const k=dkl(d); const bookedIds=mistData[k]||[]; const isToday=k===dkl(today);
                 const isPast=d<new Date(dk(today)); const hasEntry=bookedIds.length>0;
-                const myEntry=bookedIds.includes(currentUser.id);
+                const targetId = adminEditMember || currentUser.id;
+                const myEntry=bookedIds.includes(targetId);
                 const bookedMember=hasEntry?members.find(m=>m.id===bookedIds[0]):null;
                 const vacMembers=[...einstellerList,...members.filter(m=>m.type==="reitbeteiligung")].filter(m=>isOnVacationDay(m.id,k,vacations));
                 const someoneOnVac=vacMembers.length>0;
-                const canClick=!hasEntry||myEntry; // admin can click free days or own entry
+                const canClick=!hasEntry||myEntry;
                 return (
-                  <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
+                  <div key={k} onClick={()=>canClick&&toggleMist(k,targetId)}
                     style={{aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                     background:myEntry?"#3d2b1f":hasEntry?"#c8913a":someoneOnVac?"#f0faf6":isPast?"#f5f0e8":"#fff",
                     border:isToday?"3px solid #e67e22":myEntry?"2px solid #3d2b1f":hasEntry?"2px solid #a07030":someoneOnVac?"1px solid #a8d8c8":"1px solid #e2d5c0",
-
                     cursor:canClick?"pointer":"default",transition:"all .15s"}}>
                     <div style={{fontSize:10,fontWeight:isToday?700:400,color:(hasEntry||myEntry)?"#fff":someoneOnVac?"#16a085":"#2c2416"}}>{d.getDate()}</div>
-                    {myEntry&&<div style={{fontSize:7,color:"#f5c842",fontWeight:700}}>✓ Ich</div>}
+                    {myEntry&&<div style={{fontSize:7,color:"#f5c842",fontWeight:700}}>✓ {adminEditMember?members.find(m=>m.id===adminEditMember)?.name.split(" ")[0]:"Ich"}</div>}
                     {!myEntry&&hasEntry&&<div style={{fontSize:7,color:"#fff5e0",fontWeight:600,lineHeight:1,textAlign:"center",overflow:"hidden",maxWidth:"90%",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bookedMember?.name.split(" ")[0]}</div>}
                     {!hasEntry&&someoneOnVac&&(
                       <div style={{fontSize:7,color:"#16a085",fontWeight:700,lineHeight:1.1,textAlign:"center",maxWidth:"95%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
