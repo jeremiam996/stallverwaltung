@@ -1189,7 +1189,7 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
   );
 }
 
-function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einstellerList, weekDates, weekOffset, setWeekOffset, toggleMist, isMistLocked, saveMemberEdit, showToast }) {
+function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einstellerList, weekDates, weekOffset, setWeekOffset, toggleMist, isMistLocked, saveMemberEdit, showToast, mistDeadline, extendedDeadline, setExtendedDeadline }) {
   const [adminView,   setAdminView]   = useState("month");
   const [monthOffset, setMonthOffset] = useState(0);
 
@@ -1325,6 +1325,31 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
           <div style={{...S.row,justifyContent:"center",gap:6,marginBottom:14}}>
             <button onClick={()=>setAdminView("week")} style={{...S.btn(adminView==="week"?"primary":"light"),padding:"6px 16px",fontSize:12}}>📅 Woche</button>
             <button onClick={()=>setAdminView("month")} style={{...S.btn(adminView==="month"?"primary":"light"),padding:"6px 16px",fontSize:12}}>📆 Monat</button>
+          </div>
+
+          {/* Admin: extend entry deadline */}
+          <div style={{...S.row,justifyContent:"space-between",alignItems:"center",background:"#faf6f0",borderRadius:10,padding:"10px 14px",marginBottom:14,border:"1px solid #e2d5c0"}}>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:"#3d2b1f"}}>🗓️ Eintragungsfrist</div>
+              <div style={{fontSize:10,color:"#8b6040",marginTop:1}}>
+                {extendedDeadline ? `Verlängert bis ${extendedDeadline}. des Monats` : `Standard: bis 14. des Monats`}
+              </div>
+            </div>
+            <div style={{...S.row,gap:6}}>
+              {extendedDeadline&&(
+                <button onClick={()=>setExtendedDeadline(null)}
+                  style={{...S.btn("light"),padding:"5px 10px",fontSize:11,color:"#c0392b"}}>
+                  Zurücksetzen
+                </button>
+              )}
+              <button onClick={()=>{
+                const next = extendedDeadline ? Math.min(28, extendedDeadline+1) : 15;
+                setExtendedDeadline(next);
+              }}
+                style={{...S.btn("primary"),padding:"5px 12px",fontSize:11}}>
+                {extendedDeadline ? `+1 Tag (${Math.min(28,extendedDeadline+1)}.)` : "Verlängern"}
+              </button>
+            </div>
           </div>
 
           {adminView==="week"&&(<>
@@ -2120,6 +2145,7 @@ export default function StallApp() {
   const [showAddVisit,   setShowAddVisit]   = useState(false);
   const [newVisit,       setNewVisit]       = useState({date:"",note:"",isLesson:false});
   const [blockedDays,    setBlockedDays]    = useState([]); // [{id, adminId, date, note}]
+  const [extendedDeadline, setExtendedDeadline] = useState(null); // null = default 14th, or a date number (e.g. 20)
 
   const weekDates = getWeekDates(weekOffset);
   const isAdmin   = currentUser?.type==="admin";
@@ -2209,16 +2235,14 @@ export default function StallApp() {
   };
   const handleLogout = () => { setCurrentUser(null); setLoginStep("select"); setSelName(""); setPinInput(""); setTab("home"); };
 
+  const mistDeadline = extendedDeadline || 14;
   const isMistLocked = (dayKey) => {
     if(isAdmin) return false;
     const [dy,dm] = dayKey.split("-").map(Number);
     const dayYM = dy*12+(dm-1);
     const nowYM = today.getFullYear()*12+today.getMonth();
-    // Past and current month: always locked
     if(dayYM <= nowYM) return true;
-    // Next month: open 1.–14. of current month, locked after 14th
-    if(dayYM === nowYM+1) return today.getDate() > 14;
-    // Everything further: always locked
+    if(dayYM === nowYM+1) return today.getDate() > mistDeadline;
     return true;
   };
 
@@ -2226,7 +2250,7 @@ export default function StallApp() {
     if(!currentUser) return;
     if(!isAdmin&&currentUser.id!==memberId) return;
     if(!isAdmin&&isMistLocked(dayKey)){
-      showToast(today.getDate()>14?"🔒 Eintragungen nur bis zum 14. des Monats möglich":"🔒 Dieser Monat ist bereits gesperrt","#c0392b");
+      showToast(today.getDate()>mistDeadline?`🔒 Eintragungen nur bis zum ${mistDeadline}. des Monats möglich`:"🔒 Dieser Monat ist bereits gesperrt","#c0392b");
       return;
     }
     const daySlots=mistData[dayKey]||[]; const alreadyChecked=daySlots.includes(memberId);
@@ -2484,7 +2508,7 @@ export default function StallApp() {
       <div style={{paddingBottom:16}}>
         {tab==="home"     && <HomeScreen {...commonProps} events={events} mistData={mistData} finMonths={finMonths} finAccounts={finAccounts} selDay={selDay} setSelDay={setSelDay} upcomingEvents={upcomingEvents} unpaid={unpaid} mistWarnings={mistWarnings} getVacationLabel={getVacationLabel} rbVisits={rbVisits} blockedDays={blockedDays} {...finHelpers}/>}
         {tab==="calendar" && <CalendarScreen {...commonProps} events={events} showAddVacation={showAddVacation} setShowAddVacation={setShowAddVacation} newVac={newVac} setNewVac={setNewVac} vacTargetId={vacTargetId} openAddVacation={openAddVacation} addVacation={addVacation} deleteVacation={deleteVacation} updateVacation={updateVacation} deleteEvent={deleteEvent} updateEvent={updateEvent} setShowAddEvent={setShowAddEvent} rbVisits={rbVisits} showAddVisit={showAddVisit} setShowAddVisit={setShowAddVisit} newVisit={newVisit} setNewVisit={setNewVisit} addRbVisit={addRbVisit} deleteRbVisit={deleteRbVisit} updateRbVisit={updateRbVisit} blockedDays={blockedDays} addBlockedDay={addBlockedDay} deleteBlockedDay={deleteBlockedDay}/>}
-        {tab==="mist"     && <MistScreen {...commonProps} mistData={mistData} weekDates={weekDates} weekOffset={weekOffset} setWeekOffset={setWeekOffset} toggleMist={toggleMist} isMistLocked={isMistLocked} saveMemberEdit={saveMemberEdit} showToast={showToast}/>}
+        {tab==="mist"     && <MistScreen {...commonProps} mistData={mistData} weekDates={weekDates} weekOffset={weekOffset} setWeekOffset={setWeekOffset} toggleMist={toggleMist} isMistLocked={isMistLocked} saveMemberEdit={saveMemberEdit} showToast={showToast} mistDeadline={mistDeadline} extendedDeadline={extendedDeadline} setExtendedDeadline={setExtendedDeadline}/>}
         {tab==="members"  && <MembersScreen {...commonProps} showAddMember={showAddMember} setShowAddMember={setShowAddMember} newMember={newMember} setNewMember={setNewMember} addMember={addMember} deleteMember={deleteMember} saveMemberEdit={saveMemberEdit} getVacationLabel={getVacationLabel} editId={editId} setEditId={setEditId} editData={editData} setEditData={setEditData} pinMode={pinMode} setPinMode={setPinMode} pins={pins} setPins={setPins} pinErr={pinErr} setPinErr={setPinErr}/>}
         {tab==="finanzen" && <FinanzenScreen {...commonProps} finMonths={finMonths} finAccounts={finAccounts} finViewMonth={finViewMonth} finViewYear={finViewYear} setFinViewMonth={setFinViewMonth} setFinViewYear={setFinViewYear} editFee={editFee} setEditFee={setEditFee} editPay={editPay} setEditPay={setEditPay} addExtra={addExtra} setAddExtra={setAddExtra} extraForm={extraForm} setExtraForm={setExtraForm} {...finHelpers}/>}
       </div>
