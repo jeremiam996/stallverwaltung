@@ -436,7 +436,7 @@ function HomeScreen({ currentUser, isAdmin, members, events, mistData, vacations
             else if(hasLesson)  { bg="#f0e8fa"; border="2px solid #8e44ad"; }
             else if(hasVisit)   { bg="#f3eafa"; border="1.5px solid #9b59b6"; }
             else                { bg="#fff";    border="1px solid #ede5d5"; }
-            if(isToday&&!isSelected) border="3px solid #e74c3c";
+            if(isToday&&!isSelected) border="2px solid #c8913a";
 
             return (
               <div key={info.k}
