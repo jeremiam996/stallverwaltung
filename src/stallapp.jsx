@@ -1279,7 +1279,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
               else if(takenByOther){ bg="#fdecea"; border="2px solid #f5c0c0"; }
               else if(locked)      { bg="#f5f0e8"; border="1px solid #e2d5c0"; }
               else                 { bg="#fff";    border="1px solid #e2d5c0"; }
-              if(isToday)          { border="3px solid #e74c3c"; }
+              if(isToday)          { border="3px solid #27ae60"; }
               return (
                 <div key={k} onClick={()=>canClick&&toggleMist(k,currentUser.id)}
                   style={{
@@ -1470,7 +1470,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
                   <div key={k} onClick={()=>canClick&&toggleMist(k,targetId)}
                     style={{aspectRatio:"1",borderRadius:7,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                     background:myEntry?"#3d2b1f":hasEntry?"#c8913a":someoneOnVac?"#f0faf6":isPast?"#f5f0e8":"#fff",
-                    border:isToday?"3px solid #e74c3c":myEntry?"2px solid #3d2b1f":hasEntry?"2px solid #a07030":someoneOnVac?"1px solid #a8d8c8":"1px solid #e2d5c0",
+                    border:isToday?"3px solid #27ae60":myEntry?"2px solid #3d2b1f":hasEntry?"2px solid #a07030":someoneOnVac?"1px solid #a8d8c8":"1px solid #e2d5c0",
                     cursor:canClick?"pointer":"default",transition:"all .15s"}}>
                     <div style={{fontSize:10,fontWeight:isToday?700:400,color:(hasEntry||myEntry)?"#fff":someoneOnVac?"#16a085":"#2c2416"}}>{d.getDate()}</div>
                     {myEntry&&<div style={{fontSize:7,color:"#f5c842",fontWeight:700}}>✓ {adminEditMember?members.find(m=>m.id===adminEditMember)?.name.split(" ")[0]:"Ich"}</div>}
