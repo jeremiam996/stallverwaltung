@@ -2169,7 +2169,22 @@ export default function StallApp() {
   const [showAddVisit,   setShowAddVisit]   = useState(false);
   const [newVisit,       setNewVisit]       = useState({date:"",note:"",isLesson:false});
   const [blockedDays,    setBlockedDays]    = useState([]); // [{id, adminId, date, note}]
-  const [extendedDeadline, setExtendedDeadline] = useState(null); // null = default 14th, or a date number (e.g. 20)
+  const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}`;
+  const [extendedDeadline, setExtendedDeadlineRaw] = useState(()=>{
+    try {
+      const stored = localStorage.getItem("stallbuch_mist_deadline");
+      if(!stored) return null;
+      const {month, day} = JSON.parse(stored);
+      return month===currentMonthKey ? day : null; // auto-reset if month changed
+    } catch { return null; }
+  });
+  const setExtendedDeadline = (val) => {
+    setExtendedDeadlineRaw(val);
+    try {
+      if(val===null) localStorage.removeItem("stallbuch_mist_deadline");
+      else localStorage.setItem("stallbuch_mist_deadline", JSON.stringify({month:currentMonthKey, day:val}));
+    } catch{}
+  };
 
   const weekDates = getWeekDates(weekOffset);
   const isAdmin   = currentUser?.type==="admin";
