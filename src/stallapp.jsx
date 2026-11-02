@@ -81,7 +81,7 @@ const getBaseGroupQuota = (einsteller, allMembers, year, month) => {
 const getRbWeekQuota = (root, allMembers, year, month) => {
   const beteiligungen = allMembers.filter(m=>m.einstellerId===root.id);
   if(beteiligungen.length===0) return 0;
-  const mode = root.type==="admin" ? "fixed_rb" : (root.mistMode||"percent");
+  const mode = (root.mistMode||"percent");
   const weeks = year!==undefined ? getWeeksInMonth(year,month).length : 4;
   if(mode==="percent") {
     const rootShare = (root.mistShare??50) / 100;
@@ -102,7 +102,7 @@ const getRbWeekQuota = (root, allMembers, year, month) => {
   return 1;
 };
 const getRbMonthlyQuota = (root, allMembers, vacations, year, month) => {
-  const mode = root.type==="admin" ? "fixed_rb" : (root.mistMode||"percent");
+  const mode = (root.mistMode||"percent");
   if(mode==="fixed_rb") {
     // Return direct monthly value — vacation does NOT reduce quota
     return root.mistShare??2;
@@ -120,18 +120,31 @@ const getMemberWeekQuota = (member, weekMon, allMembers, vacations) => {
   return getBaseGroupQuota(member, allMembers, yr, mo);
 };
 const getMonthlyQuota = (member, allMembers, vacations, year, month) => {
-  // Special case: RB of admin with fixed_rb mode → use direct monthly value
-  if(member.type==="reitbeteiligung") {
-    const root = allMembers.find(m=>m.id===member.einstellerId);
-    if(root) {
-      const monthly = getRbMonthlyQuota(root, allMembers, vacations, year, month);
-      if(monthly !== null) return monthly;
-    }
+  // Monthly quota is computed directly from the split (no summing of rounded weekly values).
+  // Vacation does NOT reduce the quota.
+  const weeks = getWeeksInMonth(year, month).length;
+  const totalMonthly = weeks * 2;
+  const root = member.type==="reitbeteiligung"
+    ? allMembers.find(m=>m.id===member.einstellerId)
+    : member;
+  if(member.type==="reitbeteiligung" && !root) return weeks; // orphaned RB
+  const rbs = allMembers.filter(m=>m.type==="reitbeteiligung" && m.einstellerId===root.id);
+  if(member.type!=="reitbeteiligung" && rbs.length===0) return totalMonthly; // solo
+  const mode  = root.mistMode||"percent";
+  const share = root.mistShare;
+  let eMonthly, rbEach;
+  if(mode==="fixed_e") {
+    eMonthly = Math.min(totalMonthly, share??4);
+    rbEach   = rbs.length ? (totalMonthly - eMonthly) / rbs.length : 0;
+  } else if(mode==="fixed_rb") {
+    const per = share??2;
+    eMonthly = Math.max(0, totalMonthly - per*rbs.length);
+    rbEach   = per;
+  } else { // percent
+    eMonthly = Math.round(totalMonthly * (share??50) / 100);
+    rbEach   = rbs.length ? (totalMonthly - eMonthly) / rbs.length : 0;
   }
-  // Default: sum weekly quotas (vacation does NOT reduce quota)
-  let total = 0;
-  getWeeksInMonth(year, month).forEach(monKey => { total += getMemberWeekQuota(member, monKey, allMembers, vacations); });
-  return Math.round(total);
+  return member.type==="reitbeteiligung" ? Math.round(rbEach) : eMonthly;
 };
 const countMistMonth = (mistData, memberId, year, month) => {
   let count = 0;
@@ -1015,8 +1028,8 @@ function CalendarScreen({ currentUser, isAdmin, members, events, vacations, eins
 function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, saveMemberEdit, showToast }) {
   const isAdminUser  = currentUser.type==="admin";
   const [open, setOpen]   = useState(false);
-  const initMode = isAdminUser ? "fixed_rb" : (currentUser.mistMode||"percent");
-  const initVal  = isAdminUser ? (currentUser.mistShare??2) : (currentUser.mistShare??50);
+  const initMode = currentUser.mistMode||"percent";
+  const initVal  = initMode==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : (currentUser.mistShare??(initMode==="fixed_rb"?2:4));
   const [mode, setMode]   = useState(initMode);
   const [value, setValue] = useState(initVal);
 
@@ -1026,10 +1039,9 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
 
   // Sync after save
   useEffect(() => {
-    const m = isAdminUser ? "fixed_rb" : (currentUser.mistMode||"percent");
+    const m = currentUser.mistMode||"percent";
     setMode(m);
-    if(isAdminUser) setValue(currentUser.mistShare??2);
-    else setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : currentUser.mistShare??50);
+    setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : (currentUser.mistShare??(m==="fixed_rb"?2:4)));
   }, [currentUser.mistMode, currentUser.mistShare]);
 
   const getDisplayCounts = (m, v) => {
@@ -1039,14 +1051,13 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
     return {my:0, rb:0};
   };
 
-  const current = getDisplayCounts(isAdminUser?"fixed_rb":(currentUser.mistMode||"percent"), currentUser.mistShare??50);
+  const current = getDisplayCounts(currentUser.mistMode||"percent", currentUser.mistShare??((currentUser.mistMode||"percent")==="percent"?50:(currentUser.mistMode==="fixed_rb"?2:4)));
   const preview = getDisplayCounts(mode, value);
 
   const handleOpen = () => {
-    const m = isAdminUser ? "fixed_rb" : (currentUser.mistMode||"percent");
+    const m = currentUser.mistMode||"percent";
     setMode(m);
-    if(isAdminUser) setValue(currentUser.mistShare??2);
-    else setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : currentUser.mistShare??50);
+    setValue(m==="percent" ? Math.round((currentUser.mistShare??50)/10)*10 : (currentUser.mistShare??(m==="fixed_rb"?2:4)));
     setOpen(true);
   };
 
@@ -1061,7 +1072,7 @@ function MistSplitWidget({ currentUser, rbs, vacations, viewYear, viewMonth, sav
     { key:"fixed_rb", label:"Reitbet. Dienste",icon:"🤝" },
   ];
 
-  const maxVal = isAdminUser ? 10 : (mode==="percent" ? 100 : totalMonthly);
+  const maxVal = mode==="percent" ? 100 : totalMonthly;
   const minVal = 0;
   const step   = mode==="percent" ? 10 : 1;
 
@@ -1228,7 +1239,7 @@ function MistScreen({ currentUser, isAdmin, members, mistData, vacations, einste
             const mC=countMistMonth(mistData,currentUser.id,viewYear,viewMonth);
             const nextMonthDate = new Date(today.getFullYear(), today.getMonth()+1, 1);
             const isNextMonth = viewYear===nextMonthDate.getFullYear() && viewMonth===nextMonthDate.getMonth();
-            const freezeDay = 14;
+            const freezeDay = mistDeadline;
             const daysLeft = isNextMonth ? freezeDay - today.getDate() : null;
             const showWarning = daysLeft !== null && daysLeft >= 0 && mC < mQ;
             const freezeDate = new Date(today.getFullYear(), today.getMonth(), freezeDay);
@@ -2170,20 +2181,24 @@ export default function StallApp() {
   const [newVisit,       setNewVisit]       = useState({date:"",note:"",isLesson:false});
   const [blockedDays,    setBlockedDays]    = useState([]); // [{id, adminId, date, note}]
   const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}`;
-  const [extendedDeadline, setExtendedDeadlineRaw] = useState(()=>{
+  // Deadline extension is stored in the database (table app_settings) so it applies to ALL users/devices
+  const [extendedDeadline, setExtendedDeadlineRaw] = useState(null);
+  const applyDeadlineRow = (row) => {
     try {
-      const stored = localStorage.getItem("stallbuch_mist_deadline");
-      if(!stored) return null;
-      const {month, day} = JSON.parse(stored);
-      return month===currentMonthKey ? day : null; // auto-reset if month changed
-    } catch { return null; }
-  });
-  const setExtendedDeadline = (val) => {
+      if(!row || !row.value) { setExtendedDeadlineRaw(null); return; }
+      const {month, day} = JSON.parse(row.value);
+      setExtendedDeadlineRaw(month===currentMonthKey ? day : null); // auto-reset when month changes
+    } catch { setExtendedDeadlineRaw(null); }
+  };
+  const setExtendedDeadline = async (val) => {
     setExtendedDeadlineRaw(val);
-    try {
-      if(val===null) localStorage.removeItem("stallbuch_mist_deadline");
-      else localStorage.setItem("stallbuch_mist_deadline", JSON.stringify({month:currentMonthKey, day:val}));
-    } catch{}
+    if(val===null) {
+      const {error} = await sb.from("app_settings").delete().eq("key","mist_deadline");
+      if(error) showToast("⚠️ Fehler: "+error.message,"#c0392b");
+    } else {
+      const {error} = await sb.from("app_settings").upsert({key:"mist_deadline", value:JSON.stringify({month:currentMonthKey, day:val})});
+      if(error) showToast("⚠️ Fehler: "+error.message,"#c0392b");
+    }
   };
 
   const weekDates = getWeekDates(weekOffset);
@@ -2230,6 +2245,10 @@ export default function StallApp() {
       const blockedResult = await sb.from("rb_blocked_days").select("*").order("date");
       if(blockedResult.error) console.error("rb_blocked_days error:", blockedResult.error.message);
       setBlockedDays((blockedResult.data||[]).map(r=>({id:r.id, adminId:r.admin_id, date:r.date, note:r.note||""})));
+
+      const settingsResult = await sb.from("app_settings").select("*").eq("key","mist_deadline");
+      if(settingsResult.error) console.error("app_settings error:", settingsResult.error.message);
+      else applyDeadlineRow((settingsResult.data||[])[0]);
     } catch(e) {
       showToast("⚠️ Verbindungsfehler – bitte neu laden","#c0392b");
     } finally {
@@ -2249,12 +2268,19 @@ export default function StallApp() {
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_accounts"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"finance_months"},()=>loadAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"rb_visits"},async()=>{
-        const { data } = await sb.from("rb_visits").select("*").order("date").catch(()=>({data:[]}));
+        const { data, error } = await sb.from("rb_visits").select("*").order("date");
+        if(error) return;
         setRbVisits((data||[]).map(r=>({id:r.id,memberId:r.member_id,date:r.date,note:r.note||"",isLesson:r.is_lesson||false})));
       })
       .on("postgres_changes",{event:"*",schema:"public",table:"rb_blocked_days"},async()=>{
-        const { data } = await sb.from("rb_blocked_days").select("*").order("date").catch(()=>({data:[]}));
+        const { data, error } = await sb.from("rb_blocked_days").select("*").order("date");
+        if(error) return;
         setBlockedDays((data||[]).map(r=>({id:r.id,adminId:r.admin_id,date:r.date,note:r.note||""})));
+      })
+      .on("postgres_changes",{event:"*",schema:"public",table:"app_settings"},async()=>{
+        const { data, error } = await sb.from("app_settings").select("*").eq("key","mist_deadline");
+        if(error) return;
+        applyDeadlineRow((data||[])[0]);
       })
       .subscribe();
     return ()=>sb.removeChannel(channel);
